@@ -1,8 +1,12 @@
 # CoffeeMachine-alexa
+<img src="https://cdn.instructables.com/FFV/P2D0/J20P2331/FFVP2D0J20P2331.LARGE.jpg?auto=webp" width="480" height="300" />
 
 This repository contains code necessary to run the Alexa powered Coffee Machine.
 Each folder contains the respective code to be used (CSR source code is in CSR folder, and so on).
+The final application consists of a voice controlled, alexa powered coffee machine with a companion android application.
 
+# The instructables tutorial
+The code here is an expansion on the Coffee Machine project, which [you can find more detailed instructions here.](https://www.instructables.com/id/How-to-Connect-a-Coffee-Machine-With-an-Android-Ap/) There are also more links on this page regarding other project components, such as CSR and Android application info.
 # How to run this?
 ### Accounts
  * Create an [Amazon Developer](developer.amazon.com) account. (PS: you will also need an Amazon Web Services account later.)
@@ -13,7 +17,7 @@ Each folder contains the respective code to be used (CSR source code is in CSR f
  * Get your cognito pool ID, clone this repository, and paste the ID code in ```AndroidApp/Cafeteira/app/src/main/java/cafeteira/com/cafeteira/controller/AWSConnection.java``` on constant ```COGNITO_POOL_ID```
  * Go to AWS IAM service, go to ```Policies``` and ```Create your own Policy```
  * Use the following policy JSON:
- ```
+ ```JSON
  {
     "Version": "2012-10-17",
     "Statement": [
@@ -36,7 +40,7 @@ Each folder contains the respective code to be used (CSR source code is in CSR f
 
  * Now go to AWS IoT core, click on ```Secure``` and then ```Policies```.
  * Input a name, then click ```Advanced mode``` and paste the following code:
- ```
+ ```JSON
  {
   "Version": "2012-10-17",
   "Statement": [
@@ -87,13 +91,27 @@ Each folder contains the respective code to be used (CSR source code is in CSR f
 
 ### AWS Lambda
  * Create a new AWS Lambda function (make sure the region matches!) using the code provided in the ```AWS_Lambda``` folder.
- * You will need to create an API to control environment variables on Lambda. The URL for this API must be placed on ```lambda_function.py``` on *line 332*, otherwise it won't work.
+ * You will need to create an API to control environment variables on Lambda. The URL for this API must be placed on ```lambda_function.py``` on *line 332*, otherwise it won't work. (More on this below)
+ * Environment variables used by Lambda (must be created):
+ ```
+ coffelevel         //Stores how much coffee is readily available in the machine
+ glassposition      //Stores last cup sensor state
+ on_off             //Stores current machine status
+ waterlevel         //Stores how much water is on the water reservoir
+ ```
+#### API Gateway
+>In order to manipulate environment variables on Lambda, an API must be created.
+ * Go to AWS API Gateway and click ```Create API```
+ * Give it a name, a description, and leave ```Regional``` checked.
+ * Select ```Actions``` and create a new resource named **status** with path ```/status```
+ * Then, setup the *POST* and *GET* methods. Make sure you link them to your Lambda function!
+
 
 ### CSR1010 code
 * Using a CSR device connected to a Windows machine, install the CSR SDK and run the IDE.
 * Open the CSR project code and download it to the CSR module.
 
-[This instructable](https://www.instructables.com/id/How-to-Connect-a-Coffee-Machine-With-an-Android-Ap/) has more information on the CSR sensor and how to control it.
+>[This instructable](https://www.instructables.com/id/How-to-Connect-a-Coffee-Machine-With-an-Android-Ap/) has more information on the CSR sensor and how to control it.
 
 ### AlexaPi + IoT controller
  * On Amazon Developer, go to the Alexa Voice Service, select your device and go to ```Manage```.
@@ -111,8 +129,9 @@ Each folder contains the respective code to be used (CSR source code is in CSR f
  * "Alexa, ask coffee machine turn on"
  * "Alexa, ask coffee machine make long coffee"
  * "Alexa, ask coffee machine make short coffee"
+ * "Alexa, ask coffee machine turn off"
 
-PS: The coffee machine won't make coffee if water isn't hot enough. Give it some time to heat up the water and try again.
+>PS: The coffee machine won't make coffee if water isn't hot enough. Give it some time to heat up the water and try again.
 
 -----
 ### Contact
