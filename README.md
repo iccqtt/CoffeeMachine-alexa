@@ -108,12 +108,16 @@ The code here is an expansion on the Coffee Machine project, which [you can find
 
 
 ### CSR1010 code
+>This code runs on the embedded bluetooth module.
+
 * Using a CSR device connected to a Windows machine, install the CSR SDK and run the IDE.
 * Open the CSR project code and download it to the CSR module.
 
 >[This instructable](https://www.instructables.com/id/How-to-Connect-a-Coffee-Machine-With-an-Android-Ap/) has more information on the CSR sensor and how to control it.
 
 ### AlexaPi + IoT controller
+> This code runs on the embedded board! We recommend using a [Dragonboard 410C for this.](https://developer.qualcomm.com/hardware/dragonboard-410c)
+
  * On Amazon Developer, go to the Alexa Voice Service, select your device and go to ```Manage```.
  * Click on ```Security Profile``` and add ```http://localhost:5050``` and ```https://localhost:5050```to the *Allowed Origins*.
  * Add ```http://localhost:5050/code``` and ```https://localhost:5050/code``` to *Allowed return URLS*.
@@ -121,7 +125,11 @@ The code here is an expansion on the Coffee Machine project, which [you can find
  * When prompted, refuse to stop the alexapi install. You might not want to use Airplay.
  * You will then be prompted to input device information to generate authentication keys. This information is found on AVS itself.
  * Follow on-screen instructions to obtain the Auth key.
- * Make sure you have a headset connected to the embedded device, and set it as primary communications device. Do not start *alexapi* through SSH, or it will fail!
+ * Lastly, install ```AWSIoTPythonSDK``` package on pip by running:
+ ```
+ sudo pip install AWSIoTPythonSDK
+ ```
+ * Make sure you have a headset connected to the embedded device, and set it as primary communications device. Do **not** start *alexapi* through SSH, or it will fail!
  * Run **main.py**. Once CSR connection has succeeded, alexa begins listening to the wakeword.
  * Use either your voice or the Android app to control and operate the coffee machine.
 
