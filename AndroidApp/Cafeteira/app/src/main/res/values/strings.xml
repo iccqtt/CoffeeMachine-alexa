@@ -1,0 +1,80 @@
+<resources>
+    <string name="app_name">Coffee Maker</string>
+    <string name="on_off">On/Off</string>
+    <string name="coffee_machine_on">Coffee Maker on.</string>
+    <string name="coffee_machine_off">Coffee Maker off.</string>
+
+    <string name="long_button">Long</string>
+    <string name="short_button">Short</string>
+
+    <string name="coffee_level">Coffee level:</string>
+    <string name="water_level">Water level:</string>
+
+    <string name="full">Full</string>
+    <string name="empty">Empty</string>
+
+    <string name="yes_glass">The cup is positioned.</string>
+    <string name="no_glass">The cup is out of position.</string>
+
+    <string name="making_short_coffee">The short coffee is being prepared...</string>
+    <string name="making_long_coffee">The long coffee is being prepared...</string>
+
+    <string name="making_coffee">The coffee is being prepared.</string>
+    <string name="short_coffee_ready">The short coffee is ready!</string>
+    <string name="long_coffee_ready">The long coffee is ready!</string>
+    <string name="error_communication">There was a problem in communication.</string>
+    <string name="machine_in_use">Coffee maker in use.</string>
+
+    <string name="checking">Checking...</string>
+    <string name="coffee_ready_message">The coffee is ready to be removed.</string>
+    <string name="coffee_ready">Coffee ready!</string>
+
+    <string name="lost_connection">Application disconnected.</string>
+    <string name="coffee_level_empty">Coffee level insufficient.</string>
+    <string name="water_level_empty">Water level insufficient.</string>
+
+    <string name="try_connect">Connecting...</string>
+    <string name="connected">Connected!</string>
+    <string name="internet_connected">Internet connected!</string>
+    <string name="connection_error">Communication error. Try again later.</string>
+    <string name="no_internet">No internet connection.</string>
+    <string name="please_connect">Please, connect the device to valid network.</string>
+
+    <string name="on_off_title">Turn on Coffee Maker</string>
+    <string name="kind_of_coffee">Kind of coffee</string>
+    <string name="levels">Levels</string>
+    <string name="cup">Cup</string>
+
+    <string name="doing_coffee">Coffee Maker in use. Try again soon. </string>
+    <string name="coffee_maker_error">Connection error with the Coffee Maker.</string>
+    <string name="permission_not_granted">Please, enable the permissions requested by the app to use it.</string>
+    <string name="app_require_permission">This app requires the permission to be accepeted to be used.</string>
+
+    <string name="ops">Ops!</string>
+    <string name="ok">OK</string>
+    <string name="warning">Warning</string>
+
+    <string name="status">Status:</string>
+    <string name="statusDialog">Status</string>
+
+    <string name="ble_error_message">Bluetooth connection error</string>
+    <string name="wifi_error_message">Dragonboard connection error</string>
+
+    <string name="connections_ok">The connections are stable</string>
+
+    <string name="speech_prompt">Say something&#8230;</string>
+    <string name="speech_not_supported">Sorry! Your device doesn\'t support speech input</string>
+    <string name="voice_not_recognized">Command not recognized</string>
+    <string name="turn_on_coffee_machine">turn on the coffee machine</string>
+    <string name="turn_coffee_machine_on">turn the coffee machine on</string>
+    <string name="on_coffee_machine">on the coffee machine</string>
+    <string name="turn_off_coffee_machine">turn off the coffee Machine</string>
+    <string name="turn_coffee_machine_off">turn the coffee machine off</string>
+    <string name="off_coffee_machine">off the coffee machine</string>
+    <string name="make_long_coffee2">make long coffee</string>
+    <string name="make_short_coffee2">make short coffee</string>
+    <string name="make_long_coffee">make long coffee</string>
+    <string name="make_short_coffee">make short coffee</string>
+
+
+</resources>

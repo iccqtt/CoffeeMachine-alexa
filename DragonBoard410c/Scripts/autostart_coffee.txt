@@ -1,0 +1,30 @@
+#!/bin/bash
+
+ON_LINE=1
+
+while true; do
+	sleep 5
+        LC_ALL=C nmcli -t -f DEVICE,STATE dev | grep -q "^wlan0:connected$"
+	if [ $? -eq "0" ]; then
+		break
+	fi
+done
+
+
+while true; do
+    sleep 5
+    wget -q --spider http://google.com
+        
+    if [ $? -eq "0" ]; then
+        if [ "$ON_LINE" = 1 ]; then
+			cd /home/linaro/cafeteira/DragonBoard410c/AWSClient/src/AWSservice
+			ON_LINE=0
+			pkill -9 -f /home/linaro/cafeteira/DragonBoard410c/AWSClient/src/AWSservice
+			sleep 2
+			python /home/linaro/cafeteira/DragonBoard410c/AWSClient/src/AWSservice/main.py		
+        fi
+        else
+			sleep 1
+            ON_LINE=1
+        fi    
+done

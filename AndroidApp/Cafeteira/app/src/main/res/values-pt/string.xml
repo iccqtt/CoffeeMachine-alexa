@@ -1,0 +1,70 @@
+<resources>
+    <string name="app_name">Cafeteira</string>
+    <string name="on_off">Ligar/Desligar</string>
+    <string name="coffee_machine_on">Cafeteira ligada.</string>
+    <string name="coffee_machine_off">Cafeteira desligada.</string>
+
+    <string name="long_button">Longo</string>
+    <string name="short_button">Curto</string>
+
+    <string name="coffee_level">Nível de café:</string>
+    <string name="water_level">Nível de água:</string>
+
+    <string name="full">Cheio</string>
+    <string name="empty">Vazio</string>
+
+    <string name="yes_glass">O copo está posicionado.</string>
+    <string name="no_glass">O copo não está posicionado.</string>
+
+    <string name="making_short_coffee">O café curto está sendo preparado...</string>
+    <string name="making_long_coffee">O café longo está sendo preparado...</string>
+
+    <string name="making_coffee">O café está sendo preparado.</string>
+    <string name="short_coffee_ready">O café curto está pronto!</string>
+    <string name="long_coffee_ready">O café longo está pronto!</string>
+    <string name="error_communication">Houve problema na comunicação.</string>
+    <string name="machine_in_use">Cafeteira em uso.</string>
+
+    <string name="checking">Verificando...</string>
+    <string name="coffee_ready_message">O café está pronto para ser retirado.</string>
+    <string name="coffee_ready">Café pronto!</string>
+
+    <string name="lost_connection">Aplicação desconectada.</string>
+    <string name="coffee_level_empty">Nível insuficiente de café.</string>
+    <string name="water_level_empty">Nível insuficiente de água.</string>
+
+    <string name="try_connect">Conectando...</string>
+    <string name="connected">Conectado!</string>
+    <string name="internet_connected">Internet conectada!</string>
+    <string name="connection_error">Erro de comunicação. Tente novamente mais tarde.</string>
+    <string name="no_internet">Sem conexão de Internet.</string>
+    <string name="please_connect">Por favor, conecte o dispositivo a uma rede válida.</string>
+
+    <string name="on_off_title">Ligar Cafeteira</string>
+    <string name="kind_of_coffee">Tipo de café</string>
+    <string name="levels">Níveis</string>
+    <string name="cup">Copo</string>
+
+    <string name="doing_coffee">Cafeteira em uso. Tente novamente em breve. </string>
+    <string name="coffee_maker_error">Erro de conexão com a cafeteira.</string>
+    <string name="permission_not_granted">Por favor, habilite as permissões requisitadas pelo aplicativo para utilizá-lo.</string>
+    <string name="app_require_permission">Esse aplicativo requer que a permissão seja aceita para poder ser utilizado.</string>
+
+    <string name="ops">Ops!</string>
+    <string name="ok">OK</string>
+    <string name="warning">Aviso</string>
+
+    <string name="ble_error_message">Falha na conexão Bluetooth</string>
+    <string name="wifi_error_message">Falha na conexão com Dragonboard</string>
+
+    <string name="connections_ok">As conexões estão normais</string>
+
+    <string name="speech_prompt">Diga alguma coisa&#8230;</string>
+    <string name="speech_not_supported">Desculpe! Seu dispositivo não suporta reconhecimento de voz.</string>
+    <string name="voice_not_recognized">Comando não reconhecido.</string>
+    <string name="turn_on_coffee_machine">Ligar cafeteira</string>
+    <string name="turn_off_coffee_machine">Desligar cafeteira</string>
+    <string name="make_long_coffee">make short coffee</string>
+    <string name="make_short_coffee">make long coffee</string>
+
+</resources>

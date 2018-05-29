@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <color name="colorEmpty">#FFFF4043</color>
+    <color name="colorFull">#FF00FF00</color>
+    <color name="colorPrimary">#874710</color>
+    <color name="colorPrimaryDark">#5e3109</color>
+    <color name="colorAccent">#d88a15</color>
+    <color android:layout_width="wrap_content" android:id="@+id/color11" android:layout_height="wrap_content" name="line_divider">
+        #CFCFCC
+    </color>
+    <color name="clicl">#d4d4d4</color>
+    <color name="progressGreen">#43A047</color>
+    <color name="progressYellow">#FBC02D</color>
+    <color name="progressRed">#C62828</color>
+</resources>

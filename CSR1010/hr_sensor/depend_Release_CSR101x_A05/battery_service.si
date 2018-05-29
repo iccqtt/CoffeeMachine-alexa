@@ -1,0 +1,4655 @@
+   1                 		.file	"battery_service.c"
+   2                 		.variant xap2+
+   3                 	
+   4                 		.small
+   5                 	
+   6                 		.section	.debug_abbrev,"",@progbits
+   7                 	.Ldebug_abbrev0:
+   8                 		.section	.debug_info,"",@progbits
+   9                 	.Ldebug_info0:
+  10                 		.section	.debug_line,"",@progbits
+  11                 	.Ldebug_line0:
+  12 0000 00 00 00 00 		.text
+  12      00 02 00 00 
+  12      00 00 01 01 
+  12      FB 0E 0D 00 
+  12      01 01 01 01 
+  13                 	.Ltext0:
+  14                 		.section	.text.BatteryInitChipReset,"ax",@progbits
+  15                 		.global	BatteryInitChipReset
+  16                 		.type	BatteryInitChipReset, @function
+  17                 	BatteryInitChipReset:
+  18                 	.LFB4:
+  19                 		.file 1 "battery_service.c"
+   0:battery_service.c **** /******************************************************************************
+   1:battery_service.c ****  *  Copyright (C) Cambridge Silicon Radio Limited 2012
+   2:battery_service.c ****  *  Part of uEnergy SDK 2.0.0
+   3:battery_service.c ****  *  2.0.0.0
+   4:battery_service.c ****  *
+   5:battery_service.c ****  *  FILE
+   6:battery_service.c ****  *      battery_service.c
+   7:battery_service.c ****  *
+   8:battery_service.c ****  *  DESCRIPTION
+   9:battery_service.c ****  *      This file defines routines for using Battery service.
+  10:battery_service.c ****  *
+  11:battery_service.c ****  ****************************************************************************/
+  12:battery_service.c **** 
+  13:battery_service.c **** /*============================================================================*
+  14:battery_service.c ****  *  SDK Header Files
+  15:battery_service.c ****  *===========================================================================*/
+  16:battery_service.c **** 
+  17:battery_service.c **** #include <gatt.h>
+  18:battery_service.c **** #include <gatt_prim.h>
+  19:battery_service.c **** #include <battery.h>
+  20:battery_service.c **** #include <buf_utils.h>
+  21:battery_service.c **** 
+  22:battery_service.c **** /*============================================================================*
+  23:battery_service.c ****  *  Local Header Files
+  24:battery_service.c ****  *===========================================================================*/
+  25:battery_service.c **** 
+  26:battery_service.c **** #include "app_gatt.h"
+  27:battery_service.c **** #include "battery_service.h"
+  28:battery_service.c **** #include "nvm_access.h"
+  29:battery_service.c **** #include "app_gatt_db.h"
+  30:battery_service.c **** 
+  31:battery_service.c **** /*============================================================================*
+  32:battery_service.c ****  *  Private Data Types
+  33:battery_service.c ****  *===========================================================================*/
+  34:battery_service.c **** 
+  35:battery_service.c **** /* Battery service data type */
+  36:battery_service.c **** typedef struct
+  37:battery_service.c **** {
+  38:battery_service.c ****     /* Battery Level in percent */
+  39:battery_service.c ****     uint8   level;
+  40:battery_service.c **** 
+  41:battery_service.c ****     /* Client configurate for Battery Level characteristic */
+  42:battery_service.c ****     gatt_client_config level_client_config;
+  43:battery_service.c **** 
+  44:battery_service.c ****     /* NVM Offset at which Battery data is stored */
+  45:battery_service.c ****     uint16 nvm_offset;
+  46:battery_service.c **** 
+  47:battery_service.c **** } BATT_DATA_T;
+  48:battery_service.c **** 
+  49:battery_service.c **** /*============================================================================*
+  50:battery_service.c ****  *  Private Data
+  51:battery_service.c ****  *===========================================================================*/
+  52:battery_service.c **** 
+  53:battery_service.c **** /* Battery service data instance */
+  54:battery_service.c **** static BATT_DATA_T g_batt_data;
+  55:battery_service.c **** 
+  56:battery_service.c **** /*============================================================================*
+  57:battery_service.c ****  *  Private Definitions
+  58:battery_service.c ****  *===========================================================================*/
+  59:battery_service.c **** 
+  60:battery_service.c **** /* Battery Level Full in percentage */
+  61:battery_service.c **** #define BATTERY_LEVEL_FULL                            (100)
+  62:battery_service.c **** 
+  63:battery_service.c **** /* Battery critical level in percentage */
+  64:battery_service.c **** #define BATTERY_CRITICAL_LEVEL                        (10)
+  65:battery_service.c **** 
+  66:battery_service.c **** /*
+  67:battery_service.c ****  * Battery minimum and maximum voltages in mV
+  68:battery_service.c ****  */
+  69:battery_service.c **** #define BATTERY_FULL_BATTERY_VOLTAGE                  (3000) /* 3.0V */
+  70:battery_service.c **** #define BATTERY_FLAT_BATTERY_VOLTAGE                  (1800) /* 1.8V */
+  71:battery_service.c **** 
+  72:battery_service.c **** /* Number of words of NVM memory used by Battery service */
+  73:battery_service.c **** #define BATTERY_SERVICE_NVM_MEMORY_WORDS              (1)
+  74:battery_service.c **** 
+  75:battery_service.c **** /* The offset of data being stored in NVM for Battery service. This offset is 
+  76:battery_service.c ****  * added to Battery service offset to NVM region (see g_batt_data.nvm_offset) 
+  77:battery_service.c ****  * to get the absolute offset at which this data is stored in NVM
+  78:battery_service.c ****  */
+  79:battery_service.c **** #define BATTERY_NVM_LEVEL_CLIENT_CONFIG_OFFSET        (0)
+  80:battery_service.c **** 
+  81:battery_service.c **** /*============================================================================*
+  82:battery_service.c ****  *   Private Function Prototypes
+  83:battery_service.c ****  *===========================================================================*/
+  84:battery_service.c **** 
+  85:battery_service.c **** static uint8 readBatteryLevel(void);
+  86:battery_service.c **** 
+  87:battery_service.c **** /*============================================================================*
+  88:battery_service.c ****  *  Private Function Implementations
+  89:battery_service.c ****  *===========================================================================*/
+  90:battery_service.c **** 
+  91:battery_service.c **** /*----------------------------------------------------------------------------*
+  92:battery_service.c ****  *  NAME
+  93:battery_service.c ****  *      readBatteryLevel
+  94:battery_service.c ****  *
+  95:battery_service.c ****  *  DESCRIPTION
+  96:battery_service.c ****  *      This function reads the battery level 
+  97:battery_service.c ****  *
+  98:battery_service.c ****  *  RETURNS
+  99:battery_service.c ****  *      uint8 - Battery Level in percent
+ 100:battery_service.c ****  *
+ 101:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 102:battery_service.c **** 
+ 103:battery_service.c **** static uint8 readBatteryLevel(void)
+ 104:battery_service.c **** {
+ 105:battery_service.c ****     uint32 bat_voltage;
+ 106:battery_service.c ****     uint32 bat_level;
+ 107:battery_service.c **** 
+ 108:battery_service.c ****     /* Read battery voltage and level it with minimum voltage */
+ 109:battery_service.c ****     bat_voltage = BatteryReadVoltage();
+ 110:battery_service.c **** 
+ 111:battery_service.c ****     /* Level the read battery voltage to the minimum value */
+ 112:battery_service.c ****     if(bat_voltage < BATTERY_FLAT_BATTERY_VOLTAGE)
+ 113:battery_service.c ****     {
+ 114:battery_service.c ****         bat_voltage = BATTERY_FLAT_BATTERY_VOLTAGE;
+ 115:battery_service.c ****     }
+ 116:battery_service.c **** 
+ 117:battery_service.c ****     bat_voltage -= BATTERY_FLAT_BATTERY_VOLTAGE;
+ 118:battery_service.c ****     
+ 119:battery_service.c ****     /* Get battery level in percent */
+ 120:battery_service.c ****     bat_level = (bat_voltage * 100) / (BATTERY_FULL_BATTERY_VOLTAGE - 
+ 121:battery_service.c ****                                                   BATTERY_FLAT_BATTERY_VOLTAGE);
+ 122:battery_service.c **** 
+ 123:battery_service.c ****     /* Check the precision errors */
+ 124:battery_service.c ****     if(bat_level > 100)
+ 125:battery_service.c ****     {
+ 126:battery_service.c ****         bat_level = 100;
+ 127:battery_service.c ****     }
+ 128:battery_service.c **** 
+ 129:battery_service.c ****     return (uint8)bat_level;
+ 130:battery_service.c **** }
+ 131:battery_service.c **** 
+ 132:battery_service.c **** /*============================================================================*
+ 133:battery_service.c ****  *  Public Function Implementations
+ 134:battery_service.c ****  *===========================================================================*/
+ 135:battery_service.c **** 
+ 136:battery_service.c **** /*----------------------------------------------------------------------------*
+ 137:battery_service.c ****  *  NAME
+ 138:battery_service.c ****  *      BatteryDataInit
+ 139:battery_service.c ****  *
+ 140:battery_service.c ****  *  DESCRIPTION
+ 141:battery_service.c ****  *      This function is used to initialise battery service data 
+ 142:battery_service.c ****  *      structure.
+ 143:battery_service.c ****  *
+ 144:battery_service.c ****  *  RETURNS
+ 145:battery_service.c ****  *      Nothing.
+ 146:battery_service.c ****  *
+ 147:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 148:battery_service.c **** 
+ 149:battery_service.c **** extern void BatteryDataInit(void)
+ 150:battery_service.c **** {
+ 151:battery_service.c ****     if(!AppIsDeviceBonded())
+ 152:battery_service.c ****     {
+ 153:battery_service.c ****         /* Initialise battery level client configuration characterisitic
+ 154:battery_service.c ****          * descriptor value only if device is not bonded
+ 155:battery_service.c ****          */
+ 156:battery_service.c ****         g_batt_data.level_client_config = gatt_client_config_none;
+ 157:battery_service.c ****     }
+ 158:battery_service.c **** 
+ 159:battery_service.c **** }
+ 160:battery_service.c **** 
+ 161:battery_service.c **** /*----------------------------------------------------------------------------*
+ 162:battery_service.c ****  *  NAME
+ 163:battery_service.c ****  *      BatteryInitChipReset
+ 164:battery_service.c ****  *
+ 165:battery_service.c ****  *  DESCRIPTION
+ 166:battery_service.c ****  *      This function is used to initialise battery service data 
+ 167:battery_service.c ****  *      structure at chip reset
+ 168:battery_service.c ****  *
+ 169:battery_service.c ****  *  RETURNS
+ 170:battery_service.c ****  *      Nothing.
+ 171:battery_service.c ****  *
+ 172:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 173:battery_service.c **** 
+ 174:battery_service.c **** extern void BatteryInitChipReset(void)
+ 175:battery_service.c **** {
+  20                 	 1 181 0
+ 176:battery_service.c ****     /* Initialise battery level to 0 percent so that the battery level 
+ 177:battery_service.c ****      * notification (if configured) is sent when the value is read for 
+ 178:battery_service.c ****      * the first time after power cycle.
+ 179:battery_service.c ****      */
+ 180:battery_service.c ****     g_batt_data.level = 0;
+  21                 	ld	AL,#0x0000
+  22 0000 00 14       		st	AL,@g_batt_data
+  23 0001 00 00 00 25 		.loc 1 182 0
+ 181:battery_service.c **** }
+  24                 	a	0,X
+  25 0003 00 E2       	.LFE4:
+  26                 		.size	BatteryInitChipReset, .-BatteryInitChipReset
+  27                 		.global	__size_of_BatteryInitChipReset
+  28                 		.equ	__size_of_BatteryInitChipReset,. - BatteryInitChipReset
+  29                 		.section	.text.BatteryCheckHandleRange,"ax",@progbits
+  30                 		.global	BatteryCheckHandleRange
+  31                 		.type	BatteryCheckHandleRange, @function
+  32                 	BatteryCheckHandleRange:
+  33                 	.LFB9:
+  34                 		.loc 1 415 0
+ 182:battery_service.c **** 
+ 183:battery_service.c **** 
+ 184:battery_service.c **** /*----------------------------------------------------------------------------*
+ 185:battery_service.c ****  *  NAME
+ 186:battery_service.c ****  *      BatteryHandleAccessRead
+ 187:battery_service.c ****  *
+ 188:battery_service.c ****  *  DESCRIPTION
+ 189:battery_service.c ****  *      This function handles read operation on battery service attributes
+ 190:battery_service.c ****  *      maintained by the application and responds with the GATT_ACCESS_RSP 
+ 191:battery_service.c ****  *      message.
+ 192:battery_service.c ****  *
+ 193:battery_service.c ****  *  RETURNS
+ 194:battery_service.c ****  *      Nothing.
+ 195:battery_service.c ****  *
+ 196:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 197:battery_service.c **** 
+ 198:battery_service.c **** extern void BatteryHandleAccessRead(GATT_ACCESS_IND_T *p_ind)
+ 199:battery_service.c **** {
+ 200:battery_service.c ****     uint16 length = 0;
+ 201:battery_service.c ****     uint8 value[2];
+ 202:battery_service.c ****     uint8 *p_val = NULL;
+ 203:battery_service.c ****     sys_status rc = sys_status_success;
+ 204:battery_service.c **** 
+ 205:battery_service.c ****     switch(p_ind->handle)
+ 206:battery_service.c ****     {
+ 207:battery_service.c **** 
+ 208:battery_service.c ****         case HANDLE_BATT_LEVEL:
+ 209:battery_service.c ****         {
+ 210:battery_service.c ****             /* Reading battery level */
+ 211:battery_service.c ****             length = 1; /* One Octet */
+ 212:battery_service.c **** 
+ 213:battery_service.c ****             g_batt_data.level = readBatteryLevel();
+ 214:battery_service.c **** 
+ 215:battery_service.c ****             value[0] = g_batt_data.level;
+ 216:battery_service.c ****         }
+ 217:battery_service.c ****         break;
+ 218:battery_service.c **** 
+ 219:battery_service.c ****         case HANDLE_BATT_LEVEL_C_CFG:
+ 220:battery_service.c ****         {
+ 221:battery_service.c ****             length = 2; /* Two Octets */
+ 222:battery_service.c ****             p_val = value;
+ 223:battery_service.c **** 
+ 224:battery_service.c ****             BufWriteUint16((uint8 **)&p_val, g_batt_data.level_client_config);
+ 225:battery_service.c ****         }
+ 226:battery_service.c ****         break;
+ 227:battery_service.c **** 
+ 228:battery_service.c ****         default:
+ 229:battery_service.c ****             /* No more IRQ characteristics */
+ 230:battery_service.c ****             rc = gatt_status_read_not_permitted;
+ 231:battery_service.c ****         break;
+ 232:battery_service.c **** 
+ 233:battery_service.c ****     }
+ 234:battery_service.c **** 
+ 235:battery_service.c ****     /* Send Access response */
+ 236:battery_service.c ****     GattAccessRsp(p_ind->cid, p_ind->handle, rc,
+ 237:battery_service.c ****                   length, value);
+ 238:battery_service.c **** 
+ 239:battery_service.c **** }
+ 240:battery_service.c **** 
+ 241:battery_service.c **** 
+ 242:battery_service.c **** /*----------------------------------------------------------------------------*
+ 243:battery_service.c ****  *  NAME
+ 244:battery_service.c ****  *      BatteryHandleAccessWrite
+ 245:battery_service.c ****  *
+ 246:battery_service.c ****  *  DESCRIPTION
+ 247:battery_service.c ****  *      This function handles write operation on battery service attributes 
+ 248:battery_service.c ****  *      maintained by the application.and responds with the GATT_ACCESS_RSP 
+ 249:battery_service.c ****  *      message.
+ 250:battery_service.c ****  *
+ 251:battery_service.c ****  *  RETURNS
+ 252:battery_service.c ****  *      Nothing
+ 253:battery_service.c ****  *
+ 254:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 255:battery_service.c **** 
+ 256:battery_service.c **** extern void BatteryHandleAccessWrite(GATT_ACCESS_IND_T *p_ind)
+ 257:battery_service.c **** {
+ 258:battery_service.c ****     uint8 *p_value = p_ind->value;
+ 259:battery_service.c ****     uint16 client_config;
+ 260:battery_service.c ****     sys_status rc = sys_status_success;
+ 261:battery_service.c **** 
+ 262:battery_service.c ****     switch(p_ind->handle)
+ 263:battery_service.c ****     {
+ 264:battery_service.c ****         case HANDLE_BATT_LEVEL_C_CFG:
+ 265:battery_service.c ****         {
+ 266:battery_service.c ****             client_config = BufReadUint16(&p_value);
+ 267:battery_service.c **** 
+ 268:battery_service.c ****             if((client_config == gatt_client_config_notification) ||
+ 269:battery_service.c ****                (client_config == gatt_client_config_none))
+ 270:battery_service.c ****             {
+ 271:battery_service.c ****                 g_batt_data.level_client_config = client_config;
+ 272:battery_service.c **** 
+ 273:battery_service.c ****                 /* Write battery level client configuration to NVM if the 
+ 274:battery_service.c ****                  * device is bonded.
+ 275:battery_service.c ****                  */
+ 276:battery_service.c ****                 if(AppIsDeviceBonded())
+ 277:battery_service.c ****                 {
+ 278:battery_service.c ****                      Nvm_Write(&client_config,
+ 279:battery_service.c ****                               sizeof(client_config),
+ 280:battery_service.c ****                               g_batt_data.nvm_offset + 
+ 281:battery_service.c ****                               BATTERY_NVM_LEVEL_CLIENT_CONFIG_OFFSET);
+ 282:battery_service.c ****                 }
+ 283:battery_service.c ****             }
+ 284:battery_service.c ****             else
+ 285:battery_service.c ****             {
+ 286:battery_service.c ****                 /* INDICATION or RESERVED */
+ 287:battery_service.c **** 
+ 288:battery_service.c ****                 /* Return error as only notifications are supported */
+ 289:battery_service.c ****                 rc = gatt_status_app_mask;
+ 290:battery_service.c ****             }
+ 291:battery_service.c **** 
+ 292:battery_service.c ****         }
+ 293:battery_service.c ****         break;
+ 294:battery_service.c **** 
+ 295:battery_service.c **** 
+ 296:battery_service.c ****         default:
+ 297:battery_service.c ****             rc = gatt_status_write_not_permitted;
+ 298:battery_service.c ****             break;
+ 299:battery_service.c **** 
+ 300:battery_service.c ****     }
+ 301:battery_service.c **** 
+ 302:battery_service.c ****     /* Send ACCESS RESPONSE */
+ 303:battery_service.c ****     GattAccessRsp(p_ind->cid, p_ind->handle, rc, 0, NULL);
+ 304:battery_service.c **** 
+ 305:battery_service.c ****     /* Send an update as soon as notifications are configured */
+ 306:battery_service.c ****     if(g_batt_data.level_client_config == gatt_client_config_notification)
+ 307:battery_service.c ****     {
+ 308:battery_service.c ****         /* Reset current battery level to an invalid value so that it 
+ 309:battery_service.c ****          * triggers notifications on reading the current battery level 
+ 310:battery_service.c ****          */
+ 311:battery_service.c ****         g_batt_data.level = 0xFF; /* 0 to 100: Valid value range */
+ 312:battery_service.c **** 
+ 313:battery_service.c ****         BatteryUpdateLevel(p_ind->cid);
+ 314:battery_service.c ****     }
+ 315:battery_service.c **** 
+ 316:battery_service.c **** }
+ 317:battery_service.c **** 
+ 318:battery_service.c **** 
+ 319:battery_service.c **** /*----------------------------------------------------------------------------*
+ 320:battery_service.c ****  *  NAME
+ 321:battery_service.c ****  *      BattUpdateLevel
+ 322:battery_service.c ****  *
+ 323:battery_service.c ****  *  DESCRIPTION
+ 324:battery_service.c ****  *      This function is to monitor the battery level and trigger notifications
+ 325:battery_service.c ****  *      (if configured) to the connected host.
+ 326:battery_service.c ****  *
+ 327:battery_service.c ****  *  RETURNS
+ 328:battery_service.c ****  *      Nothing.
+ 329:battery_service.c ****  *
+ 330:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 331:battery_service.c **** 
+ 332:battery_service.c **** extern void BatteryUpdateLevel(uint16 ucid)
+ 333:battery_service.c **** {
+ 334:battery_service.c ****     uint8 old_vbat;
+ 335:battery_service.c ****     uint8 cur_bat_level;
+ 336:battery_service.c **** 
+ 337:battery_service.c ****     /* Read the battery level */
+ 338:battery_service.c ****     cur_bat_level = readBatteryLevel();
+ 339:battery_service.c **** 
+ 340:battery_service.c ****     old_vbat = (g_batt_data.level);
+ 341:battery_service.c **** 
+ 342:battery_service.c ****     /* If the current and old battery level are not same, update the 
+ 343:battery_service.c ****      * connected host if notifications are configured.
+ 344:battery_service.c ****      */
+ 345:battery_service.c ****     if(old_vbat != cur_bat_level)
+ 346:battery_service.c ****     {
+ 347:battery_service.c **** 
+ 348:battery_service.c ****         if((ucid != GATT_INVALID_UCID) &&
+ 349:battery_service.c ****             (g_batt_data.level_client_config == gatt_client_config_notification))
+ 350:battery_service.c ****         {
+ 351:battery_service.c **** 
+ 352:battery_service.c ****             GattCharValueNotification(ucid, 
+ 353:battery_service.c ****                                       HANDLE_BATT_LEVEL, 
+ 354:battery_service.c ****                                       1, &cur_bat_level);
+ 355:battery_service.c **** 
+ 356:battery_service.c ****             /* Update Battery Level characteristic in database */
+ 357:battery_service.c ****             g_batt_data.level = cur_bat_level;
+ 358:battery_service.c **** 
+ 359:battery_service.c ****         }
+ 360:battery_service.c ****     }
+ 361:battery_service.c **** }
+ 362:battery_service.c **** 
+ 363:battery_service.c **** 
+ 364:battery_service.c **** /*----------------------------------------------------------------------------*
+ 365:battery_service.c ****  *  NAME
+ 366:battery_service.c ****  *      BatteryReadDataFromNVM
+ 367:battery_service.c ****  *
+ 368:battery_service.c ****  *  DESCRIPTION
+ 369:battery_service.c ****  *      This function is used to read battery service specific data stored in 
+ 370:battery_service.c ****  *      NVM
+ 371:battery_service.c ****  *
+ 372:battery_service.c ****  *  RETURNS
+ 373:battery_service.c ****  *      Nothing.
+ 374:battery_service.c ****  *
+ 375:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 376:battery_service.c **** 
+ 377:battery_service.c **** extern void BatteryReadDataFromNVM(uint16 *p_offset)
+ 378:battery_service.c **** {
+ 379:battery_service.c **** 
+ 380:battery_service.c ****     g_batt_data.nvm_offset = *p_offset;
+ 381:battery_service.c **** 
+ 382:battery_service.c ****     /* Read NVM only if devices are bonded */
+ 383:battery_service.c ****     if(AppIsDeviceBonded())
+ 384:battery_service.c ****     {
+ 385:battery_service.c ****         /* Read battery level client configuration descriptor */
+ 386:battery_service.c ****         Nvm_Read((uint16*)&g_batt_data.level_client_config,
+ 387:battery_service.c ****                 sizeof(g_batt_data.level_client_config),
+ 388:battery_service.c ****                 *p_offset + 
+ 389:battery_service.c ****                 BATTERY_NVM_LEVEL_CLIENT_CONFIG_OFFSET);
+ 390:battery_service.c ****     }
+ 391:battery_service.c **** 
+ 392:battery_service.c ****     /* Increment the offset by the number of words of NVM memory required 
+ 393:battery_service.c ****      * by battery service 
+ 394:battery_service.c ****      */
+ 395:battery_service.c ****     *p_offset += BATTERY_SERVICE_NVM_MEMORY_WORDS;
+ 396:battery_service.c **** 
+ 397:battery_service.c **** }
+ 398:battery_service.c **** 
+ 399:battery_service.c **** 
+ 400:battery_service.c **** /*----------------------------------------------------------------------------*
+ 401:battery_service.c ****  *  NAME
+ 402:battery_service.c ****  *      BatteryCheckHandleRange
+ 403:battery_service.c ****  *
+ 404:battery_service.c ****  *  DESCRIPTION
+ 405:battery_service.c ****  *      This function is used to check if the handle belongs to the Battery 
+ 406:battery_service.c ****  *      service
+ 407:battery_service.c ****  *
+ 408:battery_service.c ****  *  RETURNS
+ 409:battery_service.c ****  *      Boolean - Indicating whether handle falls in range or not.
+ 410:battery_service.c ****  *
+ 411:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 412:battery_service.c **** 
+ 413:battery_service.c **** extern bool BatteryCheckHandleRange(uint16 handle)
+ 414:battery_service.c **** {
+  35                 	c 1 415 0
+  36                 		ld	AH,#0x0000
+  37                 		add	AL,#0xffef
+  38 0000 00 10       	.LVL1:
+  39 0001 EF 34       		cmp	AL,#0x0004
+  40                 		bcc	.L4
+  41 0002 04 84       		ld	AH,#0x0001
+  42 0003 00 00 00 00 	.L4:
+  42      00 F8 
+  43 0006 01 10       		.loc 1 419 0
+  44                 		ld	AL,@$XAP_AH
+ 415:battery_service.c ****     return ((handle >= HANDLE_BATTERY_SERVICE) &&
+ 416:battery_service.c ****             (handle <= HANDLE_BATTERY_SERVICE_END))
+ 417:battery_service.c ****             ? TRUE : FALSE;
+ 418:battery_service.c **** }
+  45                 	a	0,X
+  46 0007 00 00 00 15 	.LFE9:
+  47                 		.size	BatteryCheckHandleRange, .-BatteryCheckHandleRange
+  48 0009 00 E2       		.global	__size_of_BatteryCheckHandleRange
+  49                 		.equ	__size_of_BatteryCheckHandleRange,. - BatteryCheckHandleRange
+  50                 		.section	.text.BatteryDataInit,"ax",@progbits
+  51                 		.global	BatteryDataInit
+  52                 		.type	BatteryDataInit, @function
+  53                 	BatteryDataInit:
+  54                 	.LFB3:
+  55                 		.loc 1 151 0
+  56                 		enter	#0x0001
+  57                 	.LCFI0:
+ 151:battery_service.c **** {
+  58                 	
+  59 0000 01 0B       		bsr	AppIsDeviceBonded
+  60                 		tst	@$XAP_AL
+ 152:battery_service.c ****     if(!AppIsDeviceBonded())
+  61                 	ne	.L8
+  62 0001 00 00 00 00 		.loc 1 157 0
+  62      00 9C 
+  63 0004 00 00 00 99 		st	AL,@g_batt_data+0x0001
+  64 0006 00 00 00 00 	.L8:
+  64      00 F0 
+ 157:battery_service.c ****         g_batt_data.level_client_config = gatt_client_config_none;
+  65                 	c 1 160 0
+  66 0009 00 00 00 25 		leave	#0x0001
+  67                 	.LFE3:
+ 160:battery_service.c **** }
+  68                 	ize	BatteryDataInit, .-BatteryDataInit
+  69 000b 01 0F       		.global	__size_of_BatteryDataInit
+  70                 		.equ	__size_of_BatteryDataInit,. - BatteryDataInit
+  71                 		.section	.text.BatteryBondingNotify,"ax",@progbits
+  72                 		.global	BatteryBondingNotify
+  73                 		.type	BatteryBondingNotify, @function
+  74                 	BatteryBondingNotify:
+  75                 	.LFB10:
+  76                 		.loc 1 436 0
+  77                 		enter	#0x0002
+  78                 	.LCFI1:
+ 419:battery_service.c **** 
+ 420:battery_service.c **** 
+ 421:battery_service.c **** /*----------------------------------------------------------------------------*
+ 422:battery_service.c ****  *  NAME
+ 423:battery_service.c ****  *      BatteryBondingNotify
+ 424:battery_service.c ****  *
+ 425:battery_service.c ****  *  DESCRIPTION
+ 426:battery_service.c ****  *      This function is used by application to notify bonding status to 
+ 427:battery_service.c ****  *      battery service
+ 428:battery_service.c ****  *
+ 429:battery_service.c ****  *  RETURNS
+ 430:battery_service.c ****  *      Nothing.
+ 431:battery_service.c ****  *
+ 432:battery_service.c ****  *---------------------------------------------------------------------------*/
+ 433:battery_service.c **** 
+ 434:battery_service.c **** extern void BatteryBondingNotify(void)
+ 435:battery_service.c **** {
+  79                 	 0
+  80 0000 02 0B       		bsr	AppIsDeviceBonded
+  81                 		tst	@$XAP_AL
+ 436:battery_service.c **** 
+ 437:battery_service.c ****     /* Write data to NVM if bond is established */
+ 438:battery_service.c ****     if(AppIsDeviceBonded())
+  82                 	q	.L11
+  83 0001 00 00 00 00 		.loc 1 444 0
+  83      00 9C 
+  84 0004 00 00 00 99 		ld	AL,@g_batt_data+0x0002
+  85 0006 00 00 00 00 		st	AL,@(0,Y)
+  85      00 F4 
+ 439:battery_service.c ****     {
+ 440:battery_service.c ****         /* Write to NVM the client configuration value of battery level 
+ 441:battery_service.c ****          * that was configured prior to bonding 
+ 442:battery_service.c ****          */
+ 443:battery_service.c ****         Nvm_Write((uint16*)&g_batt_data.level_client_config, 
+  86                 	AL,#g_batt_data+1
+  87 0009 00 00 00 15 		ld	AH,#0x0001
+  88 000b 00 27       		bsr	Nvm_Write
+  89 000c 00 00 00 14 	.L11:
+  90 000e 01 10       		.loc 1 450 0
+  91 000f 00 00 00 00 		leave	#0x0002
+  91      00 9C 
+  92                 	.LFE10:
+ 444:battery_service.c ****                   sizeof(g_batt_data.level_client_config), 
+ 445:battery_service.c ****                   g_batt_data.nvm_offset + 
+ 446:battery_service.c ****                   BATTERY_NVM_LEVEL_CLIENT_CONFIG_OFFSET);
+ 447:battery_service.c ****     }
+ 448:battery_service.c **** 
+ 449:battery_service.c **** }
+  93                 	BatteryBondingNotify, .-BatteryBondingNotify
+  94 0012 02 0F       		.global	__size_of_BatteryBondingNotify
+  95                 		.equ	__size_of_BatteryBondingNotify,. - BatteryBondingNotify
+  96                 		.section	.text.BatteryReadDataFromNVM,"ax",@progbits
+  97                 		.global	BatteryReadDataFromNVM
+  98                 		.type	BatteryReadDataFromNVM, @function
+  99                 	BatteryReadDataFromNVM:
+ 100                 	.LFB8:
+ 101                 		.loc 1 379 0
+ 102                 	.LVL3:
+ 103                 		enter	#0x0003
+ 379:battery_service.c **** {
+ 104                 		AL,@(0x0001,Y)
+ 105                 		.loc 1 381 0
+ 106 0000 03 0B       		ld	X,@$XAP_AL
+ 107                 		ld	X,@(0,X)
+ 108 0001 01 27       		st	X,@g_batt_data+0x0002
+ 381:battery_service.c ****     g_batt_data.nvm_offset = *p_offset;
+ 109                 	 1 384 0
+ 110 0002 00 00 00 19 		bsr	AppIsDeviceBonded
+ 111 0004 00 1A       	.LVL4:
+ 112 0005 00 00 00 29 		tst	@$XAP_AL
+ 384:battery_service.c ****     if(AppIsDeviceBonded())
+ 113                 		.L13
+ 114 0007 00 00 00 00 		.loc 1 387 0
+ 114      00 9C 
+ 115                 		ld	X,@(0x0001,Y)
+ 116 000a 00 00 00 99 		ld	X,@(0,X)
+ 117 000c 00 00 00 00 		st	X,@(0,Y)
+ 117      00 F4 
+ 387:battery_service.c ****         Nvm_Read((uint16*)&g_batt_data.level_client_config,
+ 118                 	L,#g_batt_data+1
+ 119 000f 01 1B       		ld	AH,#0x0001
+ 120 0010 00 1A       		bsr	Nvm_Read
+ 121 0011 00 2B       	.L13:
+ 122 0012 00 00 00 14 		.loc 1 396 0
+ 123 0014 01 10       		ld	X,@(0x0001,Y)
+ 124 0015 00 00 00 00 		ld	AL,@(0,X)
+ 124      00 9C 
+ 125                 		add	AL,#0x0001
+ 396:battery_service.c ****     *p_offset += BATTERY_SERVICE_NVM_MEMORY_WORDS;
+ 126                 	(0,X)
+ 127 0018 01 1B       		.loc 1 398 0
+ 128 0019 00 16       		leave	#0x0003
+ 129 001a 01 34       	.LFE8:
+ 130 001b 00 26       		.size	BatteryReadDataFromNVM, .-BatteryReadDataFromNVM
+ 398:battery_service.c **** }
+ 131                 	bal	__size_of_BatteryReadDataFromNVM
+ 132 001c 03 0F       		.equ	__size_of_BatteryReadDataFromNVM,. - BatteryReadDataFromNVM
+ 133                 		.section	.text.readBatteryLevel,"ax",@progbits
+ 134                 		.type	readBatteryLevel, @function
+ 135                 	readBatteryLevel:
+ 136                 	.LFB2:
+ 137                 		.loc 1 105 0
+ 138                 		enter	#0x0003
+ 139                 	.LCFI3:
+ 140                 		.loc 1 110 0
+ 105:battery_service.c **** {
+ 141                 	ryReadVoltage
+ 142 0000 03 0B       		.loc 1 113 0
+ 143                 		cmp	AL,#0x0708
+ 110:battery_service.c ****     bat_voltage = BatteryReadVoltage();
+ 144                 	L5:
+ 145 0001 00 00 00 00 		bcc	.L16
+ 145      00 9C 
+ 113:battery_service.c ****     if(bat_voltage < BATTERY_FLAT_BATTERY_VOLTAGE)
+ 146                 	d	AL,#0x0708
+ 147 0004 07 00 08 84 	.L16:
+ 148                 		.loc 1 121 0
+ 149 0006 00 00 00 00 		ld	AH,#0x0000
+ 149      00 F8 
+ 150 0009 07 00 08 14 		add	AL,#0xf8f8
+ 151                 		addc	AH,#0xffff
+ 121:battery_service.c ****     bat_level = (bat_voltage * 100) / (BATTERY_FULL_BATTERY_VOLTAGE - 
+ 152                 	@$XAP_AH
+ 153 000b 00 10       		st	AL,@0xfff8
+ 154 000c F9 00 F8 34 	.LVL6:
+ 155 000e FF 40       		ld	AL,@$XAP_UXL
+ 156 000f 00 00 00 19 		smult	#0x0064
+ 157 0011 F8 25       		ld	X,@$XAP_AL
+ 158                 		ld	AL,@0xfff8
+ 159 0012 00 00 00 15 		umult	#0x0064
+ 160 0014 64 90       		st	AL,@0xfff9
+ 161 0015 00 00 00 19 		st	AH,@0xfff8
+ 162 0017 F8 15       		add	X,@0xfff8
+ 163 0018 00 09 64 90 		ld	AH,#0x0000
+ 164 001a F9 25       		st	AH,@(0,Y)
+ 165 001b F8 21       		ld	AL,#0x04b0
+ 166 001c F8 39       		st	AL,@(0x0001,Y)
+ 167 001d 00 10       		ld	AL,@0xfff9
+ 168 001e 00 23       		ld	AH,@$XAP_UXL
+ 169 001f 05 00 B0 14 		bsr	__udivhi3
+ 170 0021 01 27       		tst	@$XAP_AH
+ 171 0022 F9 15       		bne	.L19
+ 172 0023 00 00 00 11 		cmp	AL,#0x0065
+ 173 0025 00 00 00 00 		bcs	.L18
+ 173      00 9C 
+ 174 0028 00 00 00 99 	.L19:
+ 175 002a 00 00 00 00 		ld	AL,#0x0064
+ 175      00 F0 
+ 176 002d 65 84       	.L18:
+ 177 002e 00 00 00 00 		.loc 1 131 0
+ 177      00 FC 
+ 178                 		leave	#0x0003
+ 179 0031 64 14       	.LFE2:
+ 180                 		.size	readBatteryLevel, .-readBatteryLevel
+ 131:battery_service.c **** }
+ 181                 	vel,. - readBatteryLevel
+ 182 0032 03 0F       		.section	.text.BatteryUpdateLevel,"ax",@progbits
+ 183                 		.global	BatteryUpdateLevel
+ 184                 		.type	BatteryUpdateLevel, @function
+ 185                 	BatteryUpdateLevel:
+ 186                 	.LFB7:
+ 187                 		.loc 1 334 0
+ 188                 	.LVL7:
+ 189                 		enter	#0x0005
+ 190                 	.LCFI4:
+ 334:battery_service.c **** {
+ 191                 	x0003,Y)
+ 192                 		.loc 1 339 0
+ 193 0000 05 0B       		bsr	readBatteryLevel
+ 194                 	.LVL8:
+ 195 0001 03 27       		ld	AH,@$XAP_AL
+ 339:battery_service.c ****     cur_bat_level = readBatteryLevel();
+ 196                 	:
+ 197 0002 00 00 00 00 		.loc 1 346 0
+ 197      00 9C 
+ 198                 		ld	AL,@g_batt_data
+ 199 0005 00 00 00 11 		cmp	AL,@$XAP_AH
+ 200                 		beq	.L24
+ 346:battery_service.c ****     if(old_vbat != cur_bat_level)
+ 201                 	 1 349 0
+ 202 0007 00 00 00 15 		ld	AL,@(0x0003,Y)
+ 203 0009 00 00 00 85 		cmp	AL,#0xffff
+ 204 000b 00 00 00 00 		beq	.L24
+ 204      00 F4 
+ 349:battery_service.c ****         if((ucid != GATT_INVALID_UCID) &&
+ 205                 	AL,@g_batt_data+0x0001
+ 206 000e 03 17       		cmp	AL,#0x0001
+ 207 000f FF 84       		bne	.L24
+ 208 0010 00 00 00 00 		.loc 1 339 0
+ 208      00 F4 
+ 209 0013 00 00 00 15 		st	AH,@(0x0002,Y)
+ 210 0015 01 84       		.loc 1 353 0
+ 211 0016 00 00 00 00 		st	AL,@(0,Y)
+ 211      00 F0 
+ 339:battery_service.c ****     cur_bat_level = readBatteryLevel();
+ 212                 		ld	AL,@$XAP_UY
+ 213 0019 02 23       		add	AL,#0x0002
+ 353:battery_service.c ****             GattCharValueNotification(ucid, 
+ 214                 	0x0001,Y)
+ 215 001a 00 27       		ld	AL,@(0x0003,Y)
+ 216 001b 00 00 00 15 		ld	AH,#0x0013
+ 217 001d 02 34       	.LVL10:
+ 218 001e 01 27       		bsr	GattCharValueNotification
+ 219 001f 03 17       		.loc 1 358 0
+ 220 0020 13 10       		ld	AL,@(0x0002,Y)
+ 221                 		st	AL,@g_batt_data
+ 222 0021 00 00 00 00 	.LVL11:
+ 222      00 9C 
+ 358:battery_service.c ****             g_batt_data.level = cur_bat_level;
+ 223                 	oc 1 362 0
+ 224 0024 02 17       		leave	#0x0005
+ 225 0025 00 00 00 25 	.LFE7:
+ 226                 		.size	BatteryUpdateLevel, .-BatteryUpdateLevel
+ 227                 		.global	__size_of_BatteryUpdateLevel
+ 362:battery_service.c **** }
+ 228                 		__size_of_BatteryUpdateLevel,. - BatteryUpdateLevel
+ 229 0027 05 0F       		.section	.text.BatteryHandleAccessWrite,"ax",@progbits
+ 230                 		.global	BatteryHandleAccessWrite
+ 231                 		.type	BatteryHandleAccessWrite, @function
+ 232                 	BatteryHandleAccessWrite:
+ 233                 	.LFB6:
+ 234                 		.loc 1 258 0
+ 235                 	.LVL12:
+ 236                 		enter	#0x0007
+ 237                 	.LCFI5:
+ 238                 		st	AL,@(0x0005,Y)
+ 258:battery_service.c **** {
+ 239                 	 0
+ 240                 		ld	X,@$XAP_AL
+ 241 0000 07 0B       		ld	X,@(0x0006,X)
+ 242                 		st	X,@(0x0003,Y)
+ 243 0001 05 27       	.LVL13:
+ 259:battery_service.c ****     uint8 *p_value = p_ind->value;
+ 244                 	 1 263 0
+ 245 0002 00 00 00 19 		ld	X,@$XAP_AL
+ 246 0004 06 1A       		ld	AL,@(0x0002,X)
+ 247 0005 03 2B       	.LVL14:
+ 248                 		cmp	AL,#0x0014
+ 263:battery_service.c ****     switch(p_ind->handle)
+ 249                 	.L27
+ 250 0006 00 00 00 19 		ld	AL,#0x0a03
+ 251 0008 02 16       		bra	.L33
+ 252                 	.L27:
+ 253 0009 14 84       		.loc 1 267 0
+ 254 000a 00 00 00 00 		ld	AL,@$XAP_UY
+ 254      00 F4 
+ 255 000d 0A 00 03 14 		add	AL,#0x0003
+ 256 000f 00 00 00 00 		bsr	BufReadUint16
+ 256      00 E0 
+ 257                 		st	AL,@(0x0004,Y)
+ 267:battery_service.c ****             client_config = BufReadUint16(&p_value);
+ 258                 	.loc 1 269 0
+ 259 0012 00 00 00 15 		cmp	AL,#0x0001
+ 260 0014 03 34       		bcz	.L29
+ 261 0015 00 00 00 00 		ld	X,#0x0a80
+ 261      00 9C 
+ 262 0018 04 27       		st	X,@0xfff8
+ 263                 	.LVL16:
+ 269:battery_service.c ****             if((client_config == gatt_client_config_notification) ||
+ 264                 	L28
+ 265 0019 01 84       	.LVL17:
+ 266 001a 00 00 00 00 	.L29:
+ 266      00 2C 
+ 267 001d 0B 00 80 18 		.loc 1 272 0
+ 268 001f F8 29       		st	AL,@g_batt_data+0x0001
+ 269                 		.loc 1 277 0
+ 270 0020 00 00 00 00 		bsr	AppIsDeviceBonded
+ 270      00 E0 
+ 271                 	.LVL18:
+ 272                 		tst	@$XAP_AL
+ 272:battery_service.c ****                 g_batt_data.level_client_config = client_config;
+ 273                 	
+ 274 0023 00 00 00 25 	.L30:
+ 277:battery_service.c ****                 if(AppIsDeviceBonded())
+ 275                 	.loc 1 279 0
+ 276 0025 00 00 00 00 		ld	X,@g_batt_data+0x0002
+ 276      00 9C 
+ 277                 		st	X,@(0,Y)
+ 278 0028 00 00 00 99 		ld	AL,@$XAP_UY
+ 279 002a 00 00 00 00 		add	AL,#0x0004
+ 279      00 F4 
+ 280                 		ld	AH,#0x0001
+ 279:battery_service.c ****                      Nvm_Write(&client_config,
+ 281                 	vm_Write
+ 282 002d 00 00 00 19 		ld	AL,#0x0000
+ 283 002f 00 2B       	.L33:
+ 284 0030 00 00 00 15 		st	AL,@0xfff8
+ 285 0032 04 34       	.LVL19:
+ 286 0033 01 10       	.L28:
+ 287 0034 00 00 00 00 		.loc 1 304 0
+ 287      00 9C 
+ 288 0037 00 14       		ld	X,@(0x0005,Y)
+ 289                 		ld	AL,@(0x0001,X)
+ 290 0038 F8 25       		ld	AH,@(0x0002,X)
+ 291                 		ld	X,@0xfff8
+ 292                 		st	X,@(0,Y)
+ 304:battery_service.c ****     GattAccessRsp(p_ind->cid, p_ind->handle, rc, 0, NULL);
+ 293                 	0
+ 294 0039 05 1B       		st	X,@(0x0001,Y)
+ 295 003a 01 16       		st	X,@(0x0002,Y)
+ 296 003b 02 12       		bsr	GattAccessRsp
+ 297 003c F8 19       	.LVL20:
+ 298 003d 00 2B       		.loc 1 307 0
+ 299 003e 00 18       		ld	AL,@g_batt_data+0x0001
+ 300 003f 01 2B       		cmp	AL,#0x0001
+ 301 0040 02 2B       		bne	.L32
+ 302 0041 00 00 00 00 		.loc 1 312 0
+ 302      00 9C 
+ 303                 		ld	AL,#0x00ff
+ 307:battery_service.c ****     if(g_batt_data.level_client_config == gatt_client_config_notification)
+ 304                 	att_data
+ 305 0044 00 00 00 15 		.loc 1 314 0
+ 306 0046 01 84       		ld	X,@(0x0005,Y)
+ 307 0047 00 00 00 00 		ld	AL,@(0x0001,X)
+ 307      00 F0 
+ 312:battery_service.c ****         g_batt_data.level = 0xFF; /* 0 to 100: Valid value range */
+ 308                 		BatteryUpdateLevel
+ 309 004a 01 00 FF 14 	.L32:
+ 310 004c 00 00 00 25 		.loc 1 317 0
+ 314:battery_service.c ****         BatteryUpdateLevel(p_ind->cid);
+ 311                 	ave	#0x0007
+ 312 004e 05 1B       	.LFE6:
+ 313 004f 01 16       		.size	BatteryHandleAccessWrite, .-BatteryHandleAccessWrite
+ 314 0050 00 00 00 00 		.global	__size_of_BatteryHandleAccessWrite
+ 314      00 9C 
+ 315                 		.equ	__size_of_BatteryHandleAccessWrite,. - BatteryHandleAccessWrite
+ 317:battery_service.c **** }
+ 316                 	tion	.text.BatteryHandleAccessRead,"ax",@progbits
+ 317 0053 07 0F       		.global	BatteryHandleAccessRead
+ 318                 		.type	BatteryHandleAccessRead, @function
+ 319                 	BatteryHandleAccessRead:
+ 320                 	.LFB5:
+ 321                 		.loc 1 200 0
+ 322                 	.LVL21:
+ 323                 		enter	#0x0008
+ 324                 	.LCFI6:
+ 325                 		st	AL,@(0x0006,Y)
+ 326                 		.loc 1 203 0
+ 200:battery_service.c **** {
+ 327                 	000
+ 328                 	.LVL22:
+ 329 0000 08 0B       		st	AL,@(0x0003,Y)
+ 330                 	.LVL23:
+ 331 0001 06 27       		.loc 1 206 0
+ 203:battery_service.c ****     uint8 *p_val = NULL;
+ 332                 	,@(0x0006,Y)
+ 333 0002 00 14       		ld	AL,@(0x0002,X)
+ 334                 		cmp	AL,#0x0013
+ 335 0003 03 27       		beq	.L36
+ 336                 		cmp	AL,#0x0014
+ 206:battery_service.c ****     switch(p_ind->handle)
+ 337                 	.L37
+ 338 0004 06 1B       		ld	AL,#0x0000
+ 339 0005 02 16       		st	AL,@0xfff8
+ 340 0006 13 84       	.LVL24:
+ 341 0007 00 00 00 00 		ld	X,#0x0a02
+ 341      00 F4 
+ 342 000a 14 84       		bra	.L40
+ 343 000b 00 00 00 00 	.LVL25:
+ 343      00 F4 
+ 344 000e 00 14       	.L36:
+ 345 000f F8 25       		.loc 1 214 0
+ 346                 		bsr	readBatteryLevel
+ 347 0010 0A 00 02 18 		st	AL,@g_batt_data
+ 348 0012 00 00 00 00 		.loc 1 216 0
+ 348      00 E0 
+ 349                 		st	AL,@(0x0004,Y)
+ 350                 		ld	AL,#0x0001
+ 214:battery_service.c ****             g_batt_data.level = readBatteryLevel();
+ 351                 	
+ 352 0015 00 00 00 00 	.LVL26:
+ 352      00 9C 
+ 353 0018 00 00 00 25 		ld	X,#0x0000
+ 216:battery_service.c ****             value[0] = g_batt_data.level;
+ 354                 	40:
+ 355 001a 04 27       		st	X,@0xfff9
+ 356 001b 01 14       	.LVL27:
+ 357 001c F8 25       		bra	.L38
+ 358                 	.LVL28:
+ 359 001d 00 18       	.L37:
+ 360                 		.loc 1 223 0
+ 361 001e F9 29       		ld	AL,@$XAP_UY
+ 362                 		add	AL,#0x0004
+ 363 001f 00 00 00 00 		st	AL,@(0x0003,Y)
+ 363      00 E0 
+ 364                 	.LVL29:
+ 365                 		.loc 1 225 0
+ 223:battery_service.c ****             p_val = value;
+ 366                 	fff
+ 367 0022 00 00 00 15 		ld	AH,@g_batt_data+0x0001
+ 368 0024 04 34       		bsr	BufWriteUint16
+ 369 0025 03 27       		ld	X,#0x0002
+ 370                 		st	X,@0xfff8
+ 225:battery_service.c ****             BufWriteUint16((uint8 **)&p_val, g_batt_data.level_client_config);
+ 371                 	0:
+ 372 0026 FF 34       		ld	AL,#0x0000
+ 373 0027 00 00 00 11 		st	AL,@0xfff9
+ 374 0029 00 00 00 00 	.LVL31:
+ 374      00 9C 
+ 375 002c 02 18       	.L38:
+ 376 002d F8 29       		.loc 1 237 0
+ 377                 		ld	X,@(0x0006,Y)
+ 378 002e 00 14       		ld	AL,@(0x0001,X)
+ 379 002f F9 25       		ld	AH,@(0x0002,X)
+ 380                 		ld	X,@0xfff9
+ 381                 		st	X,@(0,Y)
+ 237:battery_service.c ****     GattAccessRsp(p_ind->cid, p_ind->handle, rc,
+ 382                 	f8
+ 383 0030 06 1B       		st	X,@(0x0001,Y)
+ 384 0031 01 16       		ld	X,@$XAP_UY
+ 385 0032 02 12       		add	X,#0x0004
+ 386 0033 F9 19       		st	X,@(0x0002,Y)
+ 387 0034 00 2B       		bsr	GattAccessRsp
+ 388 0035 F8 19       	.LVL32:
+ 389 0036 01 2B       		.loc 1 240 0
+ 390 0037 00 00 00 19 		leave	#0x0008
+ 391 0039 04 38       	.LFE5:
+ 392 003a 02 2B       		.size	BatteryHandleAccessRead, .-BatteryHandleAccessRead
+ 393 003b 00 00 00 00 		.global	__size_of_BatteryHandleAccessRead
+ 393      00 9C 
+ 394                 		.equ	__size_of_BatteryHandleAccessRead,. - BatteryHandleAccessRead
+ 240:battery_service.c **** }
+ 395                 	s.g_batt_data,"aw",@nobits
+ 396 003e 08 0F       		.type	g_batt_data, @object
+ 397                 		.size	g_batt_data, 3
+ 398                 	g_batt_data:
+ 399                 		.space	3
+ 400                 		.section	.debug_frame,"",@progbits
+ 401                 	.Lframe0:
+ 402                 		.4byte	.LECIE0-.LSCIE0
+ 403                 	.LSCIE0:
+ 404                 		.4byte	0xffffffff
+ 405 0000 00 00 00 00 		.1byte	0x1
+ 405      00 00 
+ 406                 		.ascii "\000"
+ 407                 		.1byte	0x1
+ 408 0000 00 00 00 00 		.1byte	0x7f
+ 409                 		.1byte	0x3
+ 410 0002 FF FF FF FF 		.1byte	0xc
+ 411 0004 01          		.1byte	0x5
+ 412 0004 00          		.1byte	0x0
+ 413 0005 01          		.p2align	2
+ 414 0005 7F          	.LECIE0:
+ 415 0006 03          	.LSFDE0:
+ 416 0006 0C          		.4byte	.LEFDE0-.LASFDE0
+ 417 0007 05          	.LASFDE0:
+ 418 0007 00          		.4byte	.Lframe0
+ 419                 		.4byte	.LFB4
+ 420                 		.4byte	.LFE4-.LFB4
+ 421                 		.p2align	2
+ 422 0008 00 00 00 00 	.LEFDE0:
+ 423                 	.LSFDE2:
+ 424 000a 00 00 00 00 		.4byte	.LEFDE2-.LASFDE2
+ 425 000c 00 00 00 00 	.LASFDE2:
+ 426 000e 00 00 00 00 		.4byte	.Lframe0
+ 427                 		.4byte	.LFB9
+ 428                 		.4byte	.LFE9-.LFB9
+ 429                 		.p2align	2
+ 430 0010 00 00 00 00 	.LEFDE2:
+ 431                 	.LSFDE4:
+ 432 0012 00 00 00 00 		.4byte	.LEFDE4-.LASFDE4
+ 433 0014 00 00 00 00 	.LASFDE4:
+ 434 0016 00 00 00 00 		.4byte	.Lframe0
+ 435                 		.4byte	.LFB3
+ 436                 		.4byte	.LFE3-.LFB3
+ 437                 		.1byte	0x4
+ 438 0018 00 00 00 00 		.4byte	.LCFI0-.LFB3
+ 439                 		.1byte	0xe
+ 440 001a 00 00 00 00 		.1byte	0x1
+ 441 001c 00 00 00 00 		.1byte	0x83
+ 442 001e 00 00 00 00 		.1byte	0x1
+ 443 0020 41          		.p2align	2
+ 444                 	.LEFDE4:
+ 445 0020 0E          	.LSFDE6:
+ 446 0021 01          		.4byte	.LEFDE6-.LASFDE6
+ 447 0021 83          	.LASFDE6:
+ 448 0022 01          		.4byte	.Lframe0
+ 449 0022 00 00 00    		.4byte	.LFB10
+ 450                 		.4byte	.LFE10-.LFB10
+ 451                 		.1byte	0x4
+ 452 0024 00 00 00 00 		.4byte	.LCFI1-.LFB10
+ 453                 		.1byte	0xe
+ 454 0026 00 00 00 00 		.1byte	0x2
+ 455 0028 00 00 00 00 		.1byte	0x83
+ 456 002a 00 00 00 00 		.1byte	0x1
+ 457 002c 41          		.p2align	2
+ 458                 	.LEFDE6:
+ 459 002c 0E          	.LSFDE8:
+ 460 002d 02          		.4byte	.LEFDE8-.LASFDE8
+ 461 002d 83          	.LASFDE8:
+ 462 002e 01          		.4byte	.Lframe0
+ 463 002e 00 00 00    		.4byte	.LFB8
+ 464                 		.4byte	.LFE8-.LFB8
+ 465                 		.1byte	0x4
+ 466 0030 00 00 00 00 		.4byte	.LCFI2-.LFB8
+ 467                 		.1byte	0xe
+ 468 0032 00 00 00 00 		.1byte	0x3
+ 469 0034 00 00 00 00 		.1byte	0x83
+ 470 0036 00 00 00 00 		.1byte	0x1
+ 471 0038 41          		.p2align	2
+ 472                 	.LEFDE8:
+ 473 0038 0E          	.LSFDE10:
+ 474 0039 03          		.4byte	.LEFDE10-.LASFDE10
+ 475 0039 83          	.LASFDE10:
+ 476 003a 01          		.4byte	.Lframe0
+ 477 003a 00 00 00    		.4byte	.LFB2
+ 478                 		.4byte	.LFE2-.LFB2
+ 479                 		.1byte	0x4
+ 480 003c 00 00 00 00 		.4byte	.LCFI3-.LFB2
+ 481                 		.1byte	0xe
+ 482 003e 00 00 00 00 		.1byte	0x3
+ 483 0040 00 00 00 00 		.1byte	0x83
+ 484 0042 00 00 00 00 		.1byte	0x1
+ 485 0044 41          		.p2align	2
+ 486                 	.LEFDE10:
+ 487 0044 0E          	.LSFDE12:
+ 488 0045 03          		.4byte	.LEFDE12-.LASFDE12
+ 489 0045 83          	.LASFDE12:
+ 490 0046 01          		.4byte	.Lframe0
+ 491 0046 00 00 00    		.4byte	.LFB7
+ 492                 		.4byte	.LFE7-.LFB7
+ 493                 		.1byte	0x4
+ 494 0048 00 00 00 00 		.4byte	.LCFI4-.LFB7
+ 495                 		.1byte	0xe
+ 496 004a 00 00 00 00 		.1byte	0x5
+ 497 004c 00 00 00 00 		.1byte	0x83
+ 498 004e 00 00 00 00 		.1byte	0x1
+ 499 0050 41          		.p2align	2
+ 500                 	.LEFDE12:
+ 501 0050 0E          	.LSFDE14:
+ 502 0051 05          		.4byte	.LEFDE14-.LASFDE14
+ 503 0051 83          	.LASFDE14:
+ 504 0052 01          		.4byte	.Lframe0
+ 505 0052 00 00 00    		.4byte	.LFB6
+ 506                 		.4byte	.LFE6-.LFB6
+ 507                 		.1byte	0x4
+ 508 0054 00 00 00 00 		.4byte	.LCFI5-.LFB6
+ 509                 		.1byte	0xe
+ 510 0056 00 00 00 00 		.1byte	0x7
+ 511 0058 00 00 00 00 		.1byte	0x83
+ 512 005a 00 00 00 00 		.1byte	0x1
+ 513 005c 41          		.p2align	2
+ 514                 	.LEFDE14:
+ 515 005c 0E          	.LSFDE16:
+ 516 005d 07          		.4byte	.LEFDE16-.LASFDE16
+ 517 005d 83          	.LASFDE16:
+ 518 005e 01          		.4byte	.Lframe0
+ 519 005e 00 00 00    		.4byte	.LFB5
+ 520                 		.4byte	.LFE5-.LFB5
+ 521                 		.1byte	0x4
+ 522 0060 00 00 00 00 		.4byte	.LCFI6-.LFB5
+ 523                 		.1byte	0xe
+ 524 0062 00 00 00 00 		.1byte	0x8
+ 525 0064 00 00 00 00 		.1byte	0x83
+ 526 0066 00 00 00 00 		.1byte	0x1
+ 527 0068 41          		.p2align	2
+ 528                 	.LEFDE16:
+ 529 0068 0E          		.text
+ 530 0069 08          	.Letext0:
+ 531 0069 83          		.section	.debug_loc,"",@progbits
+ 532 006a 01          	.Ldebug_loc0:
+ 533 006a 00 00 00    	.LLST2:
+ 534                 		.4byte	.LVL0
+ 535                 		.4byte	.LVL2
+ 536                 		.2byte	0x1
+ 537                 		.1byte	0x51
+ 538                 		.4byte	0x0
+ 539                 		.4byte	0x0
+ 540 0000 00 00 00 00 	.LLST3:
+ 541 0002 00 00 00 00 		.4byte	.LFB3
+ 542 0004 00 01       		.4byte	.LCFI0
+ 543 0005 51          		.2byte	0x1
+ 544 0005 00 00 00 00 		.1byte	0x55
+ 545 0007 00 00 00 00 		.4byte	.LCFI0
+ 546                 		.4byte	.LFE3
+ 547 0009 00 00 00 00 		.2byte	0x2
+ 548 000b 00 00 00 00 		.1byte	0x75
+ 549 000d 00 01       		.1byte	0x1
+ 550 000e 55          		.4byte	0x0
+ 551 000f 00 00 00 00 		.4byte	0x0
+ 552 0011 00 00 00 00 	.LLST4:
+ 553 0013 00 02       		.4byte	.LFB10
+ 554 0014 75          		.4byte	.LCFI1
+ 555 0014 01          		.2byte	0x1
+ 556 0015 00 00 00 00 		.1byte	0x55
+ 557 0017 00 00 00 00 		.4byte	.LCFI1
+ 558                 		.4byte	.LFE10
+ 559 0019 00 00 00 00 		.2byte	0x2
+ 560 001b 00 00 00 00 		.1byte	0x75
+ 561 001d 00 01       		.1byte	0x2
+ 562 001e 55          		.4byte	0x0
+ 563 001e 00 00 00 00 		.4byte	0x0
+ 564 0020 00 00 00 00 	.LLST5:
+ 565 0022 00 02       		.4byte	.LFB8
+ 566 0023 75          		.4byte	.LCFI2
+ 567 0024 02          		.2byte	0x1
+ 568 0024 00 00 00 00 		.1byte	0x55
+ 569 0026 00 00 00 00 		.4byte	.LCFI2
+ 570                 		.4byte	.LFE8
+ 571 0028 00 00 00 00 		.2byte	0x2
+ 572 002a 00 00 00 00 		.1byte	0x75
+ 573 002c 00 01       		.1byte	0x3
+ 574 002d 55          		.4byte	0x0
+ 575 002e 00 00 00 00 		.4byte	0x0
+ 576 0030 00 00 00 00 	.LLST6:
+ 577 0032 00 02       		.4byte	.LVL3
+ 578 0033 75          		.4byte	.LVL4
+ 579 0033 03          		.2byte	0x1
+ 580 0034 00 00 00 00 		.1byte	0x51
+ 581 0036 00 00 00 00 		.4byte	.LVL4
+ 582                 		.4byte	.LFE8
+ 583 0038 00 00 00 00 		.2byte	0x2
+ 584 003a 00 00 00 00 		.1byte	0x76
+ 585 003c 00 01       		.1byte	0x1
+ 586 003d 51          		.4byte	0x0
+ 587 003d 00 00 00 00 		.4byte	0x0
+ 588 003f 00 00 00 00 	.LLST7:
+ 589 0041 00 02       		.4byte	.LFB2
+ 590 0042 76          		.4byte	.LCFI3
+ 591 0043 01          		.2byte	0x1
+ 592 0043 00 00 00 00 		.1byte	0x55
+ 593 0045 00 00 00 00 		.4byte	.LCFI3
+ 594                 		.4byte	.LFE2
+ 595 0047 00 00 00 00 		.2byte	0x2
+ 596 0049 00 00 00 00 		.1byte	0x75
+ 597 004b 00 01       		.1byte	0x3
+ 598 004c 55          		.4byte	0x0
+ 599 004d 00 00 00 00 		.4byte	0x0
+ 600 004f 00 00 00 00 	.LLST8:
+ 601 0051 00 02       		.4byte	.LFB7
+ 602 0052 75          		.4byte	.LCFI4
+ 603 0052 03          		.2byte	0x1
+ 604 0053 00 00 00 00 		.1byte	0x55
+ 605 0055 00 00 00 00 		.4byte	.LCFI4
+ 606                 		.4byte	.LFE7
+ 607 0057 00 00 00 00 		.2byte	0x2
+ 608 0059 00 00 00 00 		.1byte	0x75
+ 609 005b 00 01       		.1byte	0x5
+ 610 005c 55          		.4byte	0x0
+ 611 005c 00 00 00 00 		.4byte	0x0
+ 612 005e 00 00 00 00 	.LLST9:
+ 613 0060 00 02       		.4byte	.LVL7
+ 614 0061 75          		.4byte	.LVL8
+ 615 0062 05          		.2byte	0x1
+ 616 0062 00 00 00 00 		.1byte	0x51
+ 617 0064 00 00 00 00 		.4byte	.LVL8
+ 618                 		.4byte	.LFE7
+ 619 0066 00 00 00 00 		.2byte	0x2
+ 620 0068 00 00 00 00 		.1byte	0x76
+ 621 006a 00 01       		.1byte	0x3
+ 622 006b 51          		.4byte	0x0
+ 623 006c 00 00 00 00 		.4byte	0x0
+ 624 006e 00 00 00 00 	.LLST10:
+ 625 0070 00 02       		.4byte	.LVL9
+ 626 0071 76          		.4byte	.LVL10
+ 627 0071 03          		.2byte	0x1
+ 628 0072 00 00 00 00 		.1byte	0x50
+ 629 0074 00 00 00 00 		.4byte	.LVL10
+ 630                 		.4byte	.LVL11
+ 631 0076 00 00 00 00 		.2byte	0x2
+ 632 0078 00 00 00 00 		.1byte	0x76
+ 633 007a 00 01       		.1byte	0x2
+ 634 007b 50          		.4byte	.LVL11
+ 635 007b 00 00 00 00 		.4byte	.LFE7
+ 636 007d 00 00 00 00 		.2byte	0x1
+ 637 007f 00 02       		.1byte	0x50
+ 638 0080 76          		.4byte	0x0
+ 639 0081 02          		.4byte	0x0
+ 640 0081 00 00 00 00 	.LLST11:
+ 641 0083 00 00 00 00 		.4byte	.LFB6
+ 642 0085 00 01       		.4byte	.LCFI5
+ 643 0086 50          		.2byte	0x1
+ 644 0087 00 00 00 00 		.1byte	0x55
+ 645 0089 00 00 00 00 		.4byte	.LCFI5
+ 646                 		.4byte	.LFE6
+ 647 008b 00 00 00 00 		.2byte	0x2
+ 648 008d 00 00 00 00 		.1byte	0x75
+ 649 008f 00 01       		.1byte	0x7
+ 650 0090 55          		.4byte	0x0
+ 651 0090 00 00 00 00 		.4byte	0x0
+ 652 0092 00 00 00 00 	.LLST12:
+ 653 0094 00 02       		.4byte	.LVL12
+ 654 0095 75          		.4byte	.LVL14
+ 655 0096 07          		.2byte	0x1
+ 656 0096 00 00 00 00 		.1byte	0x51
+ 657 0098 00 00 00 00 		.4byte	.LVL14
+ 658                 		.4byte	.LFE6
+ 659 009a 00 00 00 00 		.2byte	0x2
+ 660 009c 00 00 00 00 		.1byte	0x76
+ 661 009e 00 01       		.1byte	0x5
+ 662 009f 51          		.4byte	0x0
+ 663 00a0 00 00 00 00 		.4byte	0x0
+ 664 00a2 00 00 00 00 	.LLST13:
+ 665 00a4 00 02       		.4byte	.LVL15
+ 666 00a5 76          		.4byte	.LVL18
+ 667 00a5 05          		.2byte	0x1
+ 668 00a6 00 00 00 00 		.1byte	0x51
+ 669 00a8 00 00 00 00 		.4byte	.LVL18
+ 670                 		.4byte	.LFE6
+ 671 00aa 00 00 00 00 		.2byte	0x2
+ 672 00ac 00 00 00 00 		.1byte	0x76
+ 673 00ae 00 01       		.1byte	0x4
+ 674 00af 51          		.4byte	0x0
+ 675 00af 00 00 00 00 		.4byte	0x0
+ 676 00b1 00 00 00 00 	.LLST14:
+ 677 00b3 00 02       		.4byte	.LVL16
+ 678 00b4 76          		.4byte	.LVL17
+ 679 00b5 04          		.2byte	0x1
+ 680 00b5 00 00 00 00 		.1byte	0x57
+ 681 00b7 00 00 00 00 		.4byte	.LVL19
+ 682                 		.4byte	.LVL20
+ 683 00b9 00 00 00 00 		.2byte	0x1
+ 684 00bb 00 00 00 00 		.1byte	0x57
+ 685 00bd 00 01       		.4byte	0x0
+ 686 00be 57          		.4byte	0x0
+ 687 00bf 00 00 00 00 	.LLST15:
+ 688 00c1 00 00 00 00 		.4byte	.LFB5
+ 689 00c3 00 01       		.4byte	.LCFI6
+ 690 00c4 57          		.2byte	0x1
+ 691 00c4 00 00 00 00 		.1byte	0x55
+ 692 00c6 00 00 00 00 		.4byte	.LCFI6
+ 693                 		.4byte	.LFE5
+ 694 00c8 00 00 00 00 		.2byte	0x2
+ 695 00ca 00 00 00 00 		.1byte	0x75
+ 696 00cc 00 01       		.1byte	0x8
+ 697 00cd 55          		.4byte	0x0
+ 698 00ce 00 00 00 00 		.4byte	0x0
+ 699 00d0 00 00 00 00 	.LLST16:
+ 700 00d2 00 02       		.4byte	.LVL21
+ 701 00d3 75          		.4byte	.LVL22
+ 702 00d3 08          		.2byte	0x1
+ 703 00d4 00 00 00 00 		.1byte	0x51
+ 704 00d6 00 00 00 00 		.4byte	.LVL22
+ 705                 		.4byte	.LFE5
+ 706 00d8 00 00 00 00 		.2byte	0x2
+ 707 00da 00 00 00 00 		.1byte	0x76
+ 708 00dc 00 01       		.1byte	0x6
+ 709 00dd 51          		.4byte	0x0
+ 710 00dd 00 00 00 00 		.4byte	0x0
+ 711 00df 00 00 00 00 	.LLST17:
+ 712 00e1 00 02       		.4byte	.LVL24
+ 713 00e2 76          		.4byte	.LVL25
+ 714 00e3 06          		.2byte	0x1
+ 715 00e3 00 00 00 00 		.1byte	0x57
+ 716 00e5 00 00 00 00 		.4byte	.LVL26
+ 717                 		.4byte	.LVL28
+ 718 00e7 00 00 00 00 		.2byte	0x1
+ 719 00e9 00 00 00 00 		.1byte	0x57
+ 720 00eb 00 01       		.4byte	.LVL30
+ 721 00ec 57          		.4byte	.LVL32
+ 722 00ed 00 00 00 00 		.2byte	0x1
+ 723 00ef 00 00 00 00 		.1byte	0x57
+ 724 00f1 00 01       		.4byte	0x0
+ 725 00f2 57          		.4byte	0x0
+ 726 00f2 00 00 00 00 	.LLST18:
+ 727 00f4 00 00 00 00 		.4byte	.LVL27
+ 728 00f6 00 01       		.4byte	.LVL28
+ 729 00f7 57          		.2byte	0x1
+ 730 00f8 00 00 00 00 		.1byte	0x58
+ 731 00fa 00 00 00 00 		.4byte	.LVL31
+ 732                 		.4byte	.LVL32
+ 733 00fc 00 00 00 00 		.2byte	0x1
+ 734 00fe 00 00 00 00 		.1byte	0x58
+ 735 0100 00 01       		.4byte	0x0
+ 736 0101 58          		.4byte	0x0
+ 737 0101 00 00 00 00 		.file 2 "C:/uEnergy_SDK-2.0.0/tools/include/CSR101x_A05/types.h"
+ 738 0103 00 00 00 00 		.file 3 "C:/uEnergy_SDK-2.0.0/tools/include/CSR101x_A05/status.h"
+ 739 0105 00 01       		.file 4 "C:/uEnergy_SDK-2.0.0/tools/include/CSR101x_A05/core_event_types.h"
+ 740 0106 58          		.file 5 "C:/uEnergy_SDK-2.0.0/tools/include/CSR101x_A05/bt_event_types.h"
+ 741 0107 00 00 00 00 		.file 6 "app_gatt.h"
+ 742 0109 00 00 00 00 		.section	.debug_info
+ 743                 		.4byte	0xa11
+ 744                 		.2byte	0x2
+ 745                 		.4byte	.Ldebug_abbrev0
+ 746                 		.1byte	0x4
+ 747                 		.1byte	0x1
+ 748                 		.4byte	.LASF283
+ 749 0000 00 00 0A 11 		.1byte	0x1
+ 750 0002 00 02       		.4byte	.LASF284
+ 751 0003 00 00 00 00 		.4byte	.LASF285
+ 752 0005 04          		.4byte	0x0
+ 753 0005 01          		.4byte	0x0
+ 754 0006 00 00 00 00 		.4byte	.Ldebug_ranges0+0x0
+ 755 0008 01          		.4byte	.Ldebug_line0
+ 756 0008 00 00 00 00 		.1byte	0x2
+ 757 000a 00 00 00 00 		.4byte	.LASF0
+ 758 000c 00 00 00 00 		.1byte	0x2
+ 759 000e 00 00 00 00 		.1byte	0x1e
+ 760 0010 00 00 00 00 		.4byte	0x34
+ 761 0012 00 00 00 00 		.1byte	0x3
+ 762 0014 02          		.1byte	0x2
+ 763 0015 00 00 00 00 		.1byte	0x8
+ 764 0017 02          		.4byte	.LASF2
+ 765 0017 1E          		.1byte	0x2
+ 766 0018 00 00 00 34 		.4byte	.LASF1
+ 767 001a 03          		.1byte	0x2
+ 768 001a 02          		.1byte	0x1f
+ 769 001b 08          		.4byte	0x46
+ 770 001b 00 00 00 00 		.1byte	0x3
+ 771 001d 02          		.1byte	0x2
+ 772 001e 00 00 00 00 		.1byte	0x7
+ 773 0020 02          		.4byte	.LASF3
+ 774 0020 1F          		.1byte	0x2
+ 775 0021 00 00 00 46 		.4byte	.LASF4
+ 776 0023 03          		.1byte	0x2
+ 777 0023 02          		.1byte	0x20
+ 778 0024 07          		.4byte	0x58
+ 779 0024 00 00 00 00 		.1byte	0x3
+ 780 0026 02          		.1byte	0x4
+ 781 0027 00 00 00 00 		.1byte	0x7
+ 782 0029 02          		.4byte	.LASF5
+ 783 0029 20          		.1byte	0x3
+ 784 002a 00 00 00 58 		.1byte	0x2
+ 785 002c 03          		.1byte	0x6
+ 786 002c 04          		.4byte	.LASF6
+ 787 002d 07          		.1byte	0x3
+ 788 002d 00 00 00 00 		.1byte	0x2
+ 789 002f 03          		.1byte	0x5
+ 790 0030 02          		.4byte	.LASF7
+ 791 0030 06          		.1byte	0x3
+ 792 0031 00 00 00 00 		.1byte	0x4
+ 793 0033 03          		.1byte	0x5
+ 794 0033 02          		.4byte	.LASF8
+ 795 0034 05          		.1byte	0x2
+ 796 0034 00 00 00 00 		.4byte	.LASF9
+ 797 0036 03          		.1byte	0x2
+ 798 0037 04          		.1byte	0x2a
+ 799 0037 05          		.4byte	0x7f
+ 800 0038 00 00 00 00 		.1byte	0x3
+ 801 003a 02          		.1byte	0x2
+ 802 003a 00 00 00 00 		.1byte	0x7
+ 803 003c 02          		.4byte	.LASF10
+ 804 003d 2A          		.1byte	0x4
+ 805 003d 00 00 00 7F 		.1byte	0x2
+ 806 003f 03          		.1byte	0x3
+ 807 0040 02          		.1byte	0x39
+ 808 0040 07          		.4byte	0x2d4
+ 809 0041 00 00 00 00 		.1byte	0x5
+ 810 0043 04          		.4byte	.LASF11
+ 811 0043 02          		.1byte	0x0
+ 812 0044 03          		.1byte	0x5
+ 813 0044 39          		.4byte	.LASF12
+ 814 0045 00 00 02 D4 		.1byte	0x80,0x2
+ 815 0047 05          		.1byte	0x5
+ 816 0047 00 00 00 00 		.4byte	.LASF13
+ 817 0049 00          		.1byte	0x81,0x2
+ 818 004a 05          		.1byte	0x5
+ 819 004a 00 00 00 00 		.4byte	.LASF14
+ 820 004c 80 02       		.1byte	0x82,0x2
+ 821 004d 05          		.1byte	0x5
+ 822 004e 00 00 00 00 		.4byte	.LASF15
+ 823 0050 81 02       		.1byte	0x83,0x2
+ 824 0051 05          		.1byte	0x5
+ 825 0051 00 00 00 00 		.4byte	.LASF16
+ 826 0053 82 02       		.1byte	0x84,0x2
+ 827 0054 05          		.1byte	0x5
+ 828 0055 00 00 00 00 		.4byte	.LASF17
+ 829 0057 83 02       		.1byte	0x85,0x2
+ 830 0058 05          		.1byte	0x5
+ 831 0058 00 00 00 00 		.4byte	.LASF18
+ 832 005a 84 02       		.1byte	0x80,0x4
+ 833 005b 05          		.1byte	0x5
+ 834 005c 00 00 00 00 		.4byte	.LASF19
+ 835 005e 85 02       		.1byte	0x81,0x4
+ 836 005f 05          		.1byte	0x5
+ 837 005f 00 00 00 00 		.4byte	.LASF20
+ 838 0061 80 04       		.1byte	0x82,0x4
+ 839 0062 05          		.1byte	0x5
+ 840 0063 00 00 00 00 		.4byte	.LASF21
+ 841 0065 81 04       		.1byte	0x83,0x4
+ 842 0066 05          		.1byte	0x5
+ 843 0066 00 00 00 00 		.4byte	.LASF22
+ 844 0068 82 04       		.1byte	0x84,0x4
+ 845 0069 05          		.1byte	0x5
+ 846 006a 00 00 00 00 		.4byte	.LASF23
+ 847 006c 83 04       		.1byte	0x85,0x4
+ 848 006d 05          		.1byte	0x5
+ 849 006d 00 00 00 00 		.4byte	.LASF24
+ 850 006f 84 04       		.1byte	0x86,0x4
+ 851 0070 05          		.1byte	0x5
+ 852 0071 00 00 00 00 		.4byte	.LASF25
+ 853 0073 85 04       		.1byte	0x87,0x4
+ 854 0074 05          		.1byte	0x5
+ 855 0074 00 00 00 00 		.4byte	.LASF26
+ 856 0076 86 04       		.1byte	0x88,0x4
+ 857 0077 05          		.1byte	0x5
+ 858 0078 00 00 00 00 		.4byte	.LASF27
+ 859 007a 87 04       		.1byte	0x89,0x4
+ 860 007b 05          		.1byte	0x5
+ 861 007b 00 00 00 00 		.4byte	.LASF28
+ 862 007d 88 04       		.1byte	0x8a,0x4
+ 863 007e 05          		.1byte	0x5
+ 864 007f 00 00 00 00 		.4byte	.LASF29
+ 865 0081 89 04       		.1byte	0x8b,0x4
+ 866 0082 05          		.1byte	0x5
+ 867 0082 00 00 00 00 		.4byte	.LASF30
+ 868 0084 8A 04       		.1byte	0x80,0x6
+ 869 0085 05          		.1byte	0x5
+ 870 0086 00 00 00 00 		.4byte	.LASF31
+ 871 0088 8B 04       		.1byte	0x81,0x6
+ 872 0089 05          		.1byte	0x5
+ 873 0089 00 00 00 00 		.4byte	.LASF32
+ 874 008b 80 06       		.1byte	0x82,0x6
+ 875 008c 05          		.1byte	0x5
+ 876 008d 00 00 00 00 		.4byte	.LASF33
+ 877 008f 81 06       		.1byte	0x83,0x6
+ 878 0090 05          		.1byte	0x5
+ 879 0090 00 00 00 00 		.4byte	.LASF34
+ 880 0092 82 06       		.1byte	0x84,0x6
+ 881 0093 05          		.1byte	0x5
+ 882 0094 00 00 00 00 		.4byte	.LASF35
+ 883 0096 83 06       		.1byte	0x85,0x6
+ 884 0097 05          		.1byte	0x5
+ 885 0097 00 00 00 00 		.4byte	.LASF36
+ 886 0099 84 06       		.1byte	0x80,0x8
+ 887 009a 05          		.1byte	0x5
+ 888 009b 00 00 00 00 		.4byte	.LASF37
+ 889 009d 85 06       		.1byte	0x81,0x8
+ 890 009e 05          		.1byte	0x5
+ 891 009e 00 00 00 00 		.4byte	.LASF38
+ 892 00a0 80 08       		.1byte	0x82,0x8
+ 893 00a1 05          		.1byte	0x5
+ 894 00a2 00 00 00 00 		.4byte	.LASF39
+ 895 00a4 81 08       		.1byte	0x80,0x10
+ 896 00a5 05          		.1byte	0x5
+ 897 00a5 00 00 00 00 		.4byte	.LASF40
+ 898 00a7 82 08       		.1byte	0x81,0x10
+ 899 00a8 05          		.1byte	0x5
+ 900 00a9 00 00 00 00 		.4byte	.LASF41
+ 901 00ab 80 10       		.1byte	0x82,0x10
+ 902 00ac 05          		.1byte	0x5
+ 903 00ac 00 00 00 00 		.4byte	.LASF42
+ 904 00ae 81 10       		.1byte	0x83,0x10
+ 905 00af 05          		.1byte	0x5
+ 906 00b0 00 00 00 00 		.4byte	.LASF43
+ 907 00b2 82 10       		.1byte	0x80,0x12
+ 908 00b3 05          		.1byte	0x5
+ 909 00b3 00 00 00 00 		.4byte	.LASF44
+ 910 00b5 83 10       		.1byte	0x81,0x14
+ 911 00b6 05          		.1byte	0x5
+ 912 00b7 00 00 00 00 		.4byte	.LASF45
+ 913 00b9 80 12       		.1byte	0x82,0x14
+ 914 00ba 05          		.1byte	0x5
+ 915 00ba 00 00 00 00 		.4byte	.LASF46
+ 916 00bc 81 14       		.1byte	0x83,0x14
+ 917 00bd 05          		.1byte	0x5
+ 918 00be 00 00 00 00 		.4byte	.LASF47
+ 919 00c0 82 14       		.1byte	0x84,0x14
+ 920 00c1 05          		.1byte	0x5
+ 921 00c1 00 00 00 00 		.4byte	.LASF48
+ 922 00c3 83 14       		.1byte	0x85,0x14
+ 923 00c4 05          		.1byte	0x5
+ 924 00c5 00 00 00 00 		.4byte	.LASF49
+ 925 00c7 84 14       		.1byte	0x86,0x14
+ 926 00c8 05          		.1byte	0x5
+ 927 00c8 00 00 00 00 		.4byte	.LASF50
+ 928 00ca 85 14       		.1byte	0x87,0x14
+ 929 00cb 05          		.1byte	0x5
+ 930 00cc 00 00 00 00 		.4byte	.LASF51
+ 931 00ce 86 14       		.1byte	0x88,0x14
+ 932 00cf 05          		.1byte	0x5
+ 933 00cf 00 00 00 00 		.4byte	.LASF52
+ 934 00d1 87 14       		.1byte	0x89,0x14
+ 935 00d2 05          		.1byte	0x5
+ 936 00d3 00 00 00 00 		.4byte	.LASF53
+ 937 00d5 88 14       		.1byte	0x8a,0x14
+ 938 00d6 05          		.1byte	0x5
+ 939 00d6 00 00 00 00 		.4byte	.LASF54
+ 940 00d8 89 14       		.1byte	0x8b,0x14
+ 941 00d9 05          		.1byte	0x5
+ 942 00da 00 00 00 00 		.4byte	.LASF55
+ 943 00dc 8A 14       		.1byte	0x8c,0x14
+ 944 00dd 05          		.1byte	0x5
+ 945 00dd 00 00 00 00 		.4byte	.LASF56
+ 946 00df 8B 14       		.1byte	0x8d,0x14
+ 947 00e0 05          		.1byte	0x5
+ 948 00e1 00 00 00 00 		.4byte	.LASF57
+ 949 00e3 8C 14       		.1byte	0x8e,0x14
+ 950 00e4 05          		.1byte	0x5
+ 951 00e4 00 00 00 00 		.4byte	.LASF58
+ 952 00e6 8D 14       		.1byte	0x8f,0x14
+ 953 00e7 05          		.1byte	0x5
+ 954 00e8 00 00 00 00 		.4byte	.LASF59
+ 955 00ea 8E 14       		.1byte	0x90,0x14
+ 956 00eb 05          		.1byte	0x5
+ 957 00eb 00 00 00 00 		.4byte	.LASF60
+ 958 00ed 8F 14       		.1byte	0x91,0x14
+ 959 00ee 05          		.1byte	0x5
+ 960 00ef 00 00 00 00 		.4byte	.LASF61
+ 961 00f1 90 14       		.1byte	0xb3,0x14
+ 962 00f2 05          		.1byte	0x5
+ 963 00f2 00 00 00 00 		.4byte	.LASF62
+ 964 00f4 91 14       		.1byte	0xb4,0x14
+ 965 00f5 05          		.1byte	0x5
+ 966 00f6 00 00 00 00 		.4byte	.LASF63
+ 967 00f8 B3 14       		.1byte	0xb5,0x14
+ 968 00f9 05          		.1byte	0x5
+ 969 00f9 00 00 00 00 		.4byte	.LASF64
+ 970 00fb B4 14       		.1byte	0xb6,0x14
+ 971 00fc 05          		.1byte	0x5
+ 972 00fd 00 00 00 00 		.4byte	.LASF65
+ 973 00ff B5 14       		.1byte	0xb7,0x14
+ 974 0100 05          		.1byte	0x5
+ 975 0100 00 00 00 00 		.4byte	.LASF66
+ 976 0102 B6 14       		.1byte	0xb8,0x14
+ 977 0103 05          		.1byte	0x5
+ 978 0104 00 00 00 00 		.4byte	.LASF67
+ 979 0106 B7 14       		.1byte	0xb9,0x14
+ 980 0107 05          		.1byte	0x5
+ 981 0107 00 00 00 00 		.4byte	.LASF68
+ 982 0109 B8 14       		.1byte	0xba,0x14
+ 983 010a 05          		.1byte	0x5
+ 984 010b 00 00 00 00 		.4byte	.LASF69
+ 985 010d B9 14       		.1byte	0xbb,0x14
+ 986 010e 05          		.1byte	0x5
+ 987 010e 00 00 00 00 		.4byte	.LASF70
+ 988 0110 BA 14       		.1byte	0xbc,0x14
+ 989 0111 05          		.1byte	0x5
+ 990 0112 00 00 00 00 		.4byte	.LASF71
+ 991 0114 BB 14       		.1byte	0xbd,0x14
+ 992 0115 05          		.1byte	0x5
+ 993 0115 00 00 00 00 		.4byte	.LASF72
+ 994 0117 BC 14       		.1byte	0xbf,0x14
+ 995 0118 05          		.1byte	0x5
+ 996 0119 00 00 00 00 		.4byte	.LASF73
+ 997 011b BD 14       		.1byte	0xc0,0x14
+ 998 011c 05          		.1byte	0x5
+ 999 011c 00 00 00 00 		.4byte	.LASF74
+ 1000 011e BF 14       		.1byte	0xc1,0x14
+ 1001 011f 05          		.1byte	0x5
+ 1002 0120 00 00 00 00 		.4byte	.LASF75
+ 1003 0122 C0 14       		.1byte	0xc2,0x14
+ 1004 0123 05          		.1byte	0x5
+ 1005 0123 00 00 00 00 		.4byte	.LASF76
+ 1006 0125 C1 14       		.1byte	0xc3,0x14
+ 1007 0126 05          		.1byte	0x5
+ 1008 0127 00 00 00 00 		.4byte	.LASF77
+ 1009 0129 C2 14       		.1byte	0x80,0x15
+ 1010 012a 05          		.1byte	0x5
+ 1011 012a 00 00 00 00 		.4byte	.LASF78
+ 1012 012c C3 14       		.1byte	0x80,0x15
+ 1013 012d 05          		.1byte	0x5
+ 1014 012e 00 00 00 00 		.4byte	.LASF79
+ 1015 0130 80 15       		.1byte	0xff,0x15
+ 1016 0131 05          		.1byte	0x5
+ 1017 0131 00 00 00 00 		.4byte	.LASF80
+ 1018 0133 80 15       		.1byte	0x80,0x16
+ 1019 0134 05          		.1byte	0x5
+ 1020 0135 00 00 00 00 		.4byte	.LASF81
+ 1021 0137 FF 15       		.1byte	0x81,0x16
+ 1022 0138 05          		.1byte	0x5
+ 1023 0138 00 00 00 00 		.4byte	.LASF82
+ 1024 013a 80 16       		.1byte	0x82,0x16
+ 1025 013b 05          		.1byte	0x5
+ 1026 013c 00 00 00 00 		.4byte	.LASF83
+ 1027 013e 81 16       		.1byte	0x83,0x16
+ 1028 013f 05          		.1byte	0x5
+ 1029 013f 00 00 00 00 		.4byte	.LASF84
+ 1030 0141 82 16       		.1byte	0x84,0x16
+ 1031 0142 05          		.1byte	0x5
+ 1032 0143 00 00 00 00 		.4byte	.LASF85
+ 1033 0145 83 16       		.1byte	0x85,0x16
+ 1034 0146 05          		.1byte	0x5
+ 1035 0146 00 00 00 00 		.4byte	.LASF86
+ 1036 0148 84 16       		.1byte	0x86,0x16
+ 1037 0149 05          		.1byte	0x5
+ 1038 014a 00 00 00 00 		.4byte	.LASF87
+ 1039 014c 85 16       		.1byte	0x87,0x16
+ 1040 014d 05          		.1byte	0x5
+ 1041 014d 00 00 00 00 		.4byte	.LASF88
+ 1042 014f 86 16       		.1byte	0x88,0x16
+ 1043 0150 05          		.1byte	0x5
+ 1044 0151 00 00 00 00 		.4byte	.LASF89
+ 1045 0153 87 16       		.1byte	0x89,0x16
+ 1046 0154 05          		.1byte	0x5
+ 1047 0154 00 00 00 00 		.4byte	.LASF90
+ 1048 0156 88 16       		.1byte	0x8a,0x16
+ 1049 0157 05          		.1byte	0x5
+ 1050 0158 00 00 00 00 		.4byte	.LASF91
+ 1051 015a 89 16       		.1byte	0xff,0x16
+ 1052 015b 05          		.1byte	0x5
+ 1053 015b 00 00 00 00 		.4byte	.LASF92
+ 1054 015d 8A 16       		.1byte	0x80,0x17
+ 1055 015e 05          		.1byte	0x5
+ 1056 015f 00 00 00 00 		.4byte	.LASF93
+ 1057 0161 FF 16       		.1byte	0xff,0xff,0x3
+ 1058 0162 05          		.1byte	0x0
+ 1059 0162 00 00 00 00 		.1byte	0x2
+ 1060 0164 80 17       		.4byte	.LASF94
+ 1061 0165 05          		.1byte	0x3
+ 1062 0166 00 00 00 00 		.1byte	0xdc
+ 1063 0168 FF FF 03    		.4byte	0x86
+ 1064 0169 00          		.1byte	0x6
+ 1065 016a 02          		.1byte	0x2
+ 1066 016a 00 00 00 00 		.1byte	0x7
+ 1067 016c 03          		.1byte	0x4
+ 1068 016d DC          		.1byte	0x2
+ 1069 016d 00 00 00 86 		.1byte	0x4
+ 1070 016f 06          		.1byte	0x3e
+ 1071 0170 02          		.4byte	0x6fa
+ 1072 0170 07          		.1byte	0x5
+ 1073 0171 04          		.4byte	.LASF95
+ 1074 0171 02          		.1byte	0x5
+ 1075 0172 04          		.1byte	0x5
+ 1076 0172 3E          		.4byte	.LASF96
+ 1077 0173 00 00 06 FA 		.1byte	0x8
+ 1078 0175 05          		.1byte	0x5
+ 1079 0175 00 00 00 00 		.4byte	.LASF97
+ 1080 0177 05          		.1byte	0xc
+ 1081 0178 05          		.1byte	0x5
+ 1082 0178 00 00 00 00 		.4byte	.LASF98
+ 1083 017a 08          		.1byte	0xe
+ 1084 017b 05          		.1byte	0x5
+ 1085 017b 00 00 00 00 		.4byte	.LASF99
+ 1086 017d 0C          		.1byte	0xf
+ 1087 017e 05          		.1byte	0x5
+ 1088 017e 00 00 00 00 		.4byte	.LASF100
+ 1089 0180 0E          		.1byte	0x10
+ 1090 0181 05          		.1byte	0x5
+ 1091 0181 00 00 00 00 		.4byte	.LASF101
+ 1092 0183 0F          		.1byte	0x13
+ 1093 0184 05          		.1byte	0x5
+ 1094 0184 00 00 00 00 		.4byte	.LASF102
+ 1095 0186 10          		.1byte	0x1a
+ 1096 0187 05          		.1byte	0x5
+ 1097 0187 00 00 00 00 		.4byte	.LASF103
+ 1098 0189 13          		.1byte	0x30
+ 1099 018a 05          		.1byte	0x5
+ 1100 018a 00 00 00 00 		.4byte	.LASF104
+ 1101 018c 1A          		.1byte	0x3e
+ 1102 018d 05          		.1byte	0x5
+ 1103 018d 00 00 00 00 		.4byte	.LASF105
+ 1104 018f 30          		.1byte	0x3f
+ 1105 0190 05          		.1byte	0x5
+ 1106 0190 00 00 00 00 		.4byte	.LASF106
+ 1107 0192 3E          		.1byte	0xc0,0x0
+ 1108 0193 05          		.1byte	0x5
+ 1109 0193 00 00 00 00 		.4byte	.LASF107
+ 1110 0195 3F          		.1byte	0xc1,0x0
+ 1111 0196 05          		.1byte	0x5
+ 1112 0196 00 00 00 00 		.4byte	.LASF108
+ 1113 0198 C0 00       		.1byte	0xc2,0x0
+ 1114 0199 05          		.1byte	0x5
+ 1115 019a 00 00 00 00 		.4byte	.LASF109
+ 1116 019c C1 00       		.1byte	0xc3,0x0
+ 1117 019d 05          		.1byte	0x5
+ 1118 019d 00 00 00 00 		.4byte	.LASF110
+ 1119 019f C2 00       		.1byte	0xc4,0x0
+ 1120 01a0 05          		.1byte	0x5
+ 1121 01a1 00 00 00 00 		.4byte	.LASF111
+ 1122 01a3 C3 00       		.1byte	0xff,0x1
+ 1123 01a4 05          		.1byte	0x5
+ 1124 01a4 00 00 00 00 		.4byte	.LASF112
+ 1125 01a6 C4 00       		.1byte	0x80,0x14
+ 1126 01a7 05          		.1byte	0x5
+ 1127 01a8 00 00 00 00 		.4byte	.LASF113
+ 1128 01aa FF 01       		.1byte	0x81,0x14
+ 1129 01ab 05          		.1byte	0x5
+ 1130 01ab 00 00 00 00 		.4byte	.LASF114
+ 1131 01ad 80 14       		.1byte	0x82,0x14
+ 1132 01ae 05          		.1byte	0x5
+ 1133 01af 00 00 00 00 		.4byte	.LASF115
+ 1134 01b1 81 14       		.1byte	0x83,0x14
+ 1135 01b2 05          		.1byte	0x5
+ 1136 01b2 00 00 00 00 		.4byte	.LASF116
+ 1137 01b4 82 14       		.1byte	0x84,0x14
+ 1138 01b5 05          		.1byte	0x5
+ 1139 01b6 00 00 00 00 		.4byte	.LASF117
+ 1140 01b8 83 14       		.1byte	0x85,0x14
+ 1141 01b9 05          		.1byte	0x5
+ 1142 01b9 00 00 00 00 		.4byte	.LASF118
+ 1143 01bb 84 14       		.1byte	0x86,0x14
+ 1144 01bc 05          		.1byte	0x5
+ 1145 01bd 00 00 00 00 		.4byte	.LASF119
+ 1146 01bf 85 14       		.1byte	0x87,0x14
+ 1147 01c0 05          		.1byte	0x5
+ 1148 01c0 00 00 00 00 		.4byte	.LASF120
+ 1149 01c2 86 14       		.1byte	0x88,0x14
+ 1150 01c3 05          		.1byte	0x5
+ 1151 01c4 00 00 00 00 		.4byte	.LASF121
+ 1152 01c6 87 14       		.1byte	0x89,0x14
+ 1153 01c7 05          		.1byte	0x5
+ 1154 01c7 00 00 00 00 		.4byte	.LASF122
+ 1155 01c9 88 14       		.1byte	0x8a,0x14
+ 1156 01ca 05          		.1byte	0x5
+ 1157 01cb 00 00 00 00 		.4byte	.LASF123
+ 1158 01cd 89 14       		.1byte	0x8b,0x14
+ 1159 01ce 05          		.1byte	0x5
+ 1160 01ce 00 00 00 00 		.4byte	.LASF124
+ 1161 01d0 8A 14       		.1byte	0x8c,0x14
+ 1162 01d1 05          		.1byte	0x5
+ 1163 01d2 00 00 00 00 		.4byte	.LASF125
+ 1164 01d4 8B 14       		.1byte	0x8d,0x14
+ 1165 01d5 05          		.1byte	0x5
+ 1166 01d5 00 00 00 00 		.4byte	.LASF126
+ 1167 01d7 8C 14       		.1byte	0x8e,0x14
+ 1168 01d8 05          		.1byte	0x5
+ 1169 01d9 00 00 00 00 		.4byte	.LASF127
+ 1170 01db 8D 14       		.1byte	0x8f,0x14
+ 1171 01dc 05          		.1byte	0x5
+ 1172 01dc 00 00 00 00 		.4byte	.LASF128
+ 1173 01de 8E 14       		.1byte	0x90,0x14
+ 1174 01df 05          		.1byte	0x5
+ 1175 01e0 00 00 00 00 		.4byte	.LASF129
+ 1176 01e2 8F 14       		.1byte	0x91,0x14
+ 1177 01e3 05          		.1byte	0x5
+ 1178 01e3 00 00 00 00 		.4byte	.LASF130
+ 1179 01e5 90 14       		.1byte	0x92,0x14
+ 1180 01e6 05          		.1byte	0x5
+ 1181 01e7 00 00 00 00 		.4byte	.LASF131
+ 1182 01e9 91 14       		.1byte	0x93,0x14
+ 1183 01ea 05          		.1byte	0x5
+ 1184 01ea 00 00 00 00 		.4byte	.LASF132
+ 1185 01ec 92 14       		.1byte	0x94,0x14
+ 1186 01ed 05          		.1byte	0x5
+ 1187 01ee 00 00 00 00 		.4byte	.LASF133
+ 1188 01f0 93 14       		.1byte	0x95,0x14
+ 1189 01f1 05          		.1byte	0x5
+ 1190 01f1 00 00 00 00 		.4byte	.LASF134
+ 1191 01f3 94 14       		.1byte	0x96,0x14
+ 1192 01f4 05          		.1byte	0x5
+ 1193 01f5 00 00 00 00 		.4byte	.LASF135
+ 1194 01f7 95 14       		.1byte	0x80,0x15
+ 1195 01f8 05          		.1byte	0x5
+ 1196 01f8 00 00 00 00 		.4byte	.LASF136
+ 1197 01fa 96 14       		.1byte	0x81,0x15
+ 1198 01fb 05          		.1byte	0x5
+ 1199 01fc 00 00 00 00 		.4byte	.LASF137
+ 1200 01fe 80 15       		.1byte	0x82,0x15
+ 1201 01ff 05          		.1byte	0x5
+ 1202 01ff 00 00 00 00 		.4byte	.LASF138
+ 1203 0201 81 15       		.1byte	0x83,0x15
+ 1204 0202 05          		.1byte	0x5
+ 1205 0203 00 00 00 00 		.4byte	.LASF139
+ 1206 0205 82 15       		.1byte	0x84,0x15
+ 1207 0206 05          		.1byte	0x5
+ 1208 0206 00 00 00 00 		.4byte	.LASF140
+ 1209 0208 83 15       		.1byte	0x85,0x15
+ 1210 0209 05          		.1byte	0x5
+ 1211 020a 00 00 00 00 		.4byte	.LASF141
+ 1212 020c 84 15       		.1byte	0x86,0x15
+ 1213 020d 05          		.1byte	0x5
+ 1214 020d 00 00 00 00 		.4byte	.LASF142
+ 1215 020f 85 15       		.1byte	0x87,0x15
+ 1216 0210 05          		.1byte	0x5
+ 1217 0211 00 00 00 00 		.4byte	.LASF143
+ 1218 0213 86 15       		.1byte	0x88,0x15
+ 1219 0214 05          		.1byte	0x5
+ 1220 0214 00 00 00 00 		.4byte	.LASF144
+ 1221 0216 87 15       		.1byte	0x89,0x15
+ 1222 0217 05          		.1byte	0x5
+ 1223 0218 00 00 00 00 		.4byte	.LASF145
+ 1224 021a 88 15       		.1byte	0x8a,0x15
+ 1225 021b 05          		.1byte	0x5
+ 1226 021b 00 00 00 00 		.4byte	.LASF146
+ 1227 021d 89 15       		.1byte	0x8b,0x15
+ 1228 021e 05          		.1byte	0x5
+ 1229 021f 00 00 00 00 		.4byte	.LASF147
+ 1230 0221 8A 15       		.1byte	0x8c,0x15
+ 1231 0222 05          		.1byte	0x5
+ 1232 0222 00 00 00 00 		.4byte	.LASF148
+ 1233 0224 8B 15       		.1byte	0x8d,0x15
+ 1234 0225 05          		.1byte	0x5
+ 1235 0226 00 00 00 00 		.4byte	.LASF149
+ 1236 0228 8C 15       		.1byte	0x8e,0x15
+ 1237 0229 05          		.1byte	0x5
+ 1238 0229 00 00 00 00 		.4byte	.LASF150
+ 1239 022b 8D 15       		.1byte	0x8f,0x15
+ 1240 022c 05          		.1byte	0x5
+ 1241 022d 00 00 00 00 		.4byte	.LASF151
+ 1242 022f 8E 15       		.1byte	0x90,0x15
+ 1243 0230 05          		.1byte	0x5
+ 1244 0230 00 00 00 00 		.4byte	.LASF152
+ 1245 0232 8F 15       		.1byte	0x91,0x15
+ 1246 0233 05          		.1byte	0x5
+ 1247 0234 00 00 00 00 		.4byte	.LASF153
+ 1248 0236 90 15       		.1byte	0x92,0x15
+ 1249 0237 05          		.1byte	0x5
+ 1250 0237 00 00 00 00 		.4byte	.LASF154
+ 1251 0239 91 15       		.1byte	0x93,0x15
+ 1252 023a 05          		.1byte	0x5
+ 1253 023b 00 00 00 00 		.4byte	.LASF155
+ 1254 023d 92 15       		.1byte	0x94,0x15
+ 1255 023e 05          		.1byte	0x5
+ 1256 023e 00 00 00 00 		.4byte	.LASF156
+ 1257 0240 93 15       		.1byte	0x95,0x15
+ 1258 0241 05          		.1byte	0x5
+ 1259 0242 00 00 00 00 		.4byte	.LASF157
+ 1260 0244 94 15       		.1byte	0x96,0x15
+ 1261 0245 05          		.1byte	0x5
+ 1262 0245 00 00 00 00 		.4byte	.LASF158
+ 1263 0247 95 15       		.1byte	0x97,0x15
+ 1264 0248 05          		.1byte	0x5
+ 1265 0249 00 00 00 00 		.4byte	.LASF159
+ 1266 024b 96 15       		.1byte	0x98,0x15
+ 1267 024c 05          		.1byte	0x5
+ 1268 024c 00 00 00 00 		.4byte	.LASF160
+ 1269 024e 97 15       		.1byte	0x99,0x15
+ 1270 024f 05          		.1byte	0x5
+ 1271 0250 00 00 00 00 		.4byte	.LASF161
+ 1272 0252 98 15       		.1byte	0x9a,0x15
+ 1273 0253 05          		.1byte	0x5
+ 1274 0253 00 00 00 00 		.4byte	.LASF162
+ 1275 0255 99 15       		.1byte	0x9b,0x15
+ 1276 0256 05          		.1byte	0x5
+ 1277 0257 00 00 00 00 		.4byte	.LASF163
+ 1278 0259 9A 15       		.1byte	0x9c,0x15
+ 1279 025a 05          		.1byte	0x5
+ 1280 025a 00 00 00 00 		.4byte	.LASF164
+ 1281 025c 9B 15       		.1byte	0x9d,0x15
+ 1282 025d 05          		.1byte	0x5
+ 1283 025e 00 00 00 00 		.4byte	.LASF165
+ 1284 0260 9C 15       		.1byte	0x9e,0x15
+ 1285 0261 05          		.1byte	0x5
+ 1286 0261 00 00 00 00 		.4byte	.LASF166
+ 1287 0263 9D 15       		.1byte	0xc0,0x14
+ 1288 0264 05          		.1byte	0x5
+ 1289 0265 00 00 00 00 		.4byte	.LASF167
+ 1290 0267 9E 15       		.1byte	0xc1,0x14
+ 1291 0268 05          		.1byte	0x5
+ 1292 0268 00 00 00 00 		.4byte	.LASF168
+ 1293 026a C0 14       		.1byte	0xc2,0x14
+ 1294 026b 05          		.1byte	0x5
+ 1295 026c 00 00 00 00 		.4byte	.LASF169
+ 1296 026e C1 14       		.1byte	0xc3,0x14
+ 1297 026f 05          		.1byte	0x5
+ 1298 026f 00 00 00 00 		.4byte	.LASF170
+ 1299 0271 C2 14       		.1byte	0xc4,0x14
+ 1300 0272 05          		.1byte	0x5
+ 1301 0273 00 00 00 00 		.4byte	.LASF171
+ 1302 0275 C3 14       		.1byte	0xc5,0x14
+ 1303 0276 05          		.1byte	0x5
+ 1304 0276 00 00 00 00 		.4byte	.LASF172
+ 1305 0278 C4 14       		.1byte	0xc6,0x14
+ 1306 0279 05          		.1byte	0x5
+ 1307 027a 00 00 00 00 		.4byte	.LASF173
+ 1308 027c C5 14       		.1byte	0xc7,0x14
+ 1309 027d 05          		.1byte	0x5
+ 1310 027d 00 00 00 00 		.4byte	.LASF174
+ 1311 027f C6 14       		.1byte	0xc8,0x14
+ 1312 0280 05          		.1byte	0x5
+ 1313 0281 00 00 00 00 		.4byte	.LASF175
+ 1314 0283 C7 14       		.1byte	0xc9,0x14
+ 1315 0284 05          		.1byte	0x5
+ 1316 0284 00 00 00 00 		.4byte	.LASF176
+ 1317 0286 C8 14       		.1byte	0xca,0x14
+ 1318 0287 05          		.1byte	0x5
+ 1319 0288 00 00 00 00 		.4byte	.LASF177
+ 1320 028a C9 14       		.1byte	0xcb,0x14
+ 1321 028b 05          		.1byte	0x5
+ 1322 028b 00 00 00 00 		.4byte	.LASF178
+ 1323 028d CA 14       		.1byte	0xc0,0x15
+ 1324 028e 05          		.1byte	0x5
+ 1325 028f 00 00 00 00 		.4byte	.LASF179
+ 1326 0291 CB 14       		.1byte	0xc1,0x15
+ 1327 0292 05          		.1byte	0x5
+ 1328 0292 00 00 00 00 		.4byte	.LASF180
+ 1329 0294 C0 15       		.1byte	0xc2,0x15
+ 1330 0295 05          		.1byte	0x5
+ 1331 0296 00 00 00 00 		.4byte	.LASF181
+ 1332 0298 C1 15       		.1byte	0xc3,0x15
+ 1333 0299 05          		.1byte	0x5
+ 1334 0299 00 00 00 00 		.4byte	.LASF182
+ 1335 029b C2 15       		.1byte	0xc4,0x15
+ 1336 029c 05          		.1byte	0x5
+ 1337 029d 00 00 00 00 		.4byte	.LASF183
+ 1338 029f C3 15       		.1byte	0xc5,0x15
+ 1339 02a0 05          		.1byte	0x5
+ 1340 02a0 00 00 00 00 		.4byte	.LASF184
+ 1341 02a2 C4 15       		.1byte	0xc6,0x15
+ 1342 02a3 05          		.1byte	0x5
+ 1343 02a4 00 00 00 00 		.4byte	.LASF185
+ 1344 02a6 C5 15       		.1byte	0xc7,0x15
+ 1345 02a7 05          		.1byte	0x5
+ 1346 02a7 00 00 00 00 		.4byte	.LASF186
+ 1347 02a9 C6 15       		.1byte	0xc8,0x15
+ 1348 02aa 05          		.1byte	0x5
+ 1349 02ab 00 00 00 00 		.4byte	.LASF187
+ 1350 02ad C7 15       		.1byte	0xc9,0x15
+ 1351 02ae 05          		.1byte	0x5
+ 1352 02ae 00 00 00 00 		.4byte	.LASF188
+ 1353 02b0 C8 15       		.1byte	0xca,0x15
+ 1354 02b1 05          		.1byte	0x5
+ 1355 02b2 00 00 00 00 		.4byte	.LASF189
+ 1356 02b4 C9 15       		.1byte	0xcb,0x15
+ 1357 02b5 05          		.1byte	0x5
+ 1358 02b5 00 00 00 00 		.4byte	.LASF190
+ 1359 02b7 CA 15       		.1byte	0xcc,0x15
+ 1360 02b8 05          		.1byte	0x5
+ 1361 02b9 00 00 00 00 		.4byte	.LASF191
+ 1362 02bb CB 15       		.1byte	0xe0,0x14
+ 1363 02bc 05          		.1byte	0x5
+ 1364 02bc 00 00 00 00 		.4byte	.LASF192
+ 1365 02be CC 15       		.1byte	0xe1,0x14
+ 1366 02bf 05          		.1byte	0x5
+ 1367 02c0 00 00 00 00 		.4byte	.LASF193
+ 1368 02c2 E0 14       		.1byte	0xe2,0x14
+ 1369 02c3 05          		.1byte	0x5
+ 1370 02c3 00 00 00 00 		.4byte	.LASF194
+ 1371 02c5 E1 14       		.1byte	0xe3,0x14
+ 1372 02c6 05          		.1byte	0x5
+ 1373 02c7 00 00 00 00 		.4byte	.LASF195
+ 1374 02c9 E2 14       		.1byte	0xe4,0x14
+ 1375 02ca 05          		.1byte	0x5
+ 1376 02ca 00 00 00 00 		.4byte	.LASF196
+ 1377 02cc E3 14       		.1byte	0xe5,0x14
+ 1378 02cd 05          		.1byte	0x5
+ 1379 02ce 00 00 00 00 		.4byte	.LASF197
+ 1380 02d0 E4 14       		.1byte	0xe6,0x14
+ 1381 02d1 05          		.1byte	0x5
+ 1382 02d1 00 00 00 00 		.4byte	.LASF198
+ 1383 02d3 E5 14       		.1byte	0xe7,0x14
+ 1384 02d4 05          		.1byte	0x5
+ 1385 02d5 00 00 00 00 		.4byte	.LASF199
+ 1386 02d7 E6 14       		.1byte	0xe8,0x14
+ 1387 02d8 05          		.1byte	0x5
+ 1388 02d8 00 00 00 00 		.4byte	.LASF200
+ 1389 02da E7 14       		.1byte	0xe9,0x14
+ 1390 02db 05          		.1byte	0x5
+ 1391 02dc 00 00 00 00 		.4byte	.LASF201
+ 1392 02de E8 14       		.1byte	0xea,0x14
+ 1393 02df 05          		.1byte	0x5
+ 1394 02df 00 00 00 00 		.4byte	.LASF202
+ 1395 02e1 E9 14       		.1byte	0xeb,0x14
+ 1396 02e2 05          		.1byte	0x5
+ 1397 02e3 00 00 00 00 		.4byte	.LASF203
+ 1398 02e5 EA 14       		.1byte	0xec,0x14
+ 1399 02e6 05          		.1byte	0x5
+ 1400 02e6 00 00 00 00 		.4byte	.LASF204
+ 1401 02e8 EB 14       		.1byte	0xed,0x14
+ 1402 02e9 05          		.1byte	0x5
+ 1403 02ea 00 00 00 00 		.4byte	.LASF205
+ 1404 02ec EC 14       		.1byte	0xee,0x14
+ 1405 02ed 05          		.1byte	0x5
+ 1406 02ed 00 00 00 00 		.4byte	.LASF206
+ 1407 02ef ED 14       		.1byte	0xef,0x14
+ 1408 02f0 05          		.1byte	0x5
+ 1409 02f1 00 00 00 00 		.4byte	.LASF207
+ 1410 02f3 EE 14       		.1byte	0xf0,0x14
+ 1411 02f4 05          		.1byte	0x5
+ 1412 02f4 00 00 00 00 		.4byte	.LASF208
+ 1413 02f6 EF 14       		.1byte	0xf1,0x14
+ 1414 02f7 05          		.1byte	0x5
+ 1415 02f8 00 00 00 00 		.4byte	.LASF209
+ 1416 02fa F0 14       		.1byte	0xf2,0x14
+ 1417 02fb 05          		.1byte	0x5
+ 1418 02fb 00 00 00 00 		.4byte	.LASF210
+ 1419 02fd F1 14       		.1byte	0xf3,0x14
+ 1420 02fe 05          		.1byte	0x5
+ 1421 02ff 00 00 00 00 		.4byte	.LASF211
+ 1422 0301 F2 14       		.1byte	0xf4,0x14
+ 1423 0302 05          		.1byte	0x5
+ 1424 0302 00 00 00 00 		.4byte	.LASF212
+ 1425 0304 F3 14       		.1byte	0xf5,0x14
+ 1426 0305 05          		.1byte	0x5
+ 1427 0306 00 00 00 00 		.4byte	.LASF213
+ 1428 0308 F4 14       		.1byte	0xf6,0x14
+ 1429 0309 05          		.1byte	0x5
+ 1430 0309 00 00 00 00 		.4byte	.LASF214
+ 1431 030b F5 14       		.1byte	0xf7,0x14
+ 1432 030c 05          		.1byte	0x5
+ 1433 030d 00 00 00 00 		.4byte	.LASF215
+ 1434 030f F6 14       		.1byte	0xe0,0x15
+ 1435 0310 05          		.1byte	0x5
+ 1436 0310 00 00 00 00 		.4byte	.LASF216
+ 1437 0312 F7 14       		.1byte	0xe1,0x15
+ 1438 0313 05          		.1byte	0x5
+ 1439 0314 00 00 00 00 		.4byte	.LASF217
+ 1440 0316 E0 15       		.1byte	0xe2,0x15
+ 1441 0317 05          		.1byte	0x5
+ 1442 0317 00 00 00 00 		.4byte	.LASF218
+ 1443 0319 E1 15       		.1byte	0xe3,0x15
+ 1444 031a 05          		.1byte	0x5
+ 1445 031b 00 00 00 00 		.4byte	.LASF219
+ 1446 031d E2 15       		.1byte	0xe4,0x15
+ 1447 031e 05          		.1byte	0x5
+ 1448 031e 00 00 00 00 		.4byte	.LASF220
+ 1449 0320 E3 15       		.1byte	0xe5,0x15
+ 1450 0321 05          		.1byte	0x5
+ 1451 0322 00 00 00 00 		.4byte	.LASF221
+ 1452 0324 E4 15       		.1byte	0xe6,0x15
+ 1453 0325 05          		.1byte	0x5
+ 1454 0325 00 00 00 00 		.4byte	.LASF222
+ 1455 0327 E5 15       		.1byte	0xe7,0x15
+ 1456 0328 05          		.1byte	0x5
+ 1457 0329 00 00 00 00 		.4byte	.LASF223
+ 1458 032b E6 15       		.1byte	0xe8,0x15
+ 1459 032c 05          		.1byte	0x5
+ 1460 032c 00 00 00 00 		.4byte	.LASF224
+ 1461 032e E7 15       		.1byte	0xe9,0x15
+ 1462 032f 05          		.1byte	0x5
+ 1463 0330 00 00 00 00 		.4byte	.LASF225
+ 1464 0332 E8 15       		.1byte	0xea,0x15
+ 1465 0333 05          		.1byte	0x5
+ 1466 0333 00 00 00 00 		.4byte	.LASF226
+ 1467 0335 E9 15       		.1byte	0xeb,0x15
+ 1468 0336 05          		.1byte	0x5
+ 1469 0337 00 00 00 00 		.4byte	.LASF227
+ 1470 0339 EA 15       		.1byte	0xec,0x15
+ 1471 033a 05          		.1byte	0x5
+ 1472 033a 00 00 00 00 		.4byte	.LASF228
+ 1473 033c EB 15       		.1byte	0xed,0x15
+ 1474 033d 05          		.1byte	0x5
+ 1475 033e 00 00 00 00 		.4byte	.LASF229
+ 1476 0340 EC 15       		.1byte	0xee,0x15
+ 1477 0341 05          		.1byte	0x5
+ 1478 0341 00 00 00 00 		.4byte	.LASF230
+ 1479 0343 ED 15       		.1byte	0xef,0x15
+ 1480 0344 05          		.1byte	0x5
+ 1481 0345 00 00 00 00 		.4byte	.LASF231
+ 1482 0347 EE 15       		.1byte	0xf0,0x15
+ 1483 0348 05          		.1byte	0x5
+ 1484 0348 00 00 00 00 		.4byte	.LASF232
+ 1485 034a EF 15       		.1byte	0xf1,0x15
+ 1486 034b 05          		.1byte	0x5
+ 1487 034c 00 00 00 00 		.4byte	.LASF233
+ 1488 034e F0 15       		.1byte	0xf2,0x15
+ 1489 034f 05          		.1byte	0x5
+ 1490 034f 00 00 00 00 		.4byte	.LASF234
+ 1491 0351 F1 15       		.1byte	0xf3,0x15
+ 1492 0352 05          		.1byte	0x5
+ 1493 0353 00 00 00 00 		.4byte	.LASF235
+ 1494 0355 F2 15       		.1byte	0xf4,0x15
+ 1495 0356 05          		.1byte	0x5
+ 1496 0356 00 00 00 00 		.4byte	.LASF236
+ 1497 0358 F3 15       		.1byte	0xf5,0x15
+ 1498 0359 05          		.1byte	0x5
+ 1499 035a 00 00 00 00 		.4byte	.LASF237
+ 1500 035c F4 15       		.1byte	0xf6,0x15
+ 1501 035d 05          		.1byte	0x5
+ 1502 035d 00 00 00 00 		.4byte	.LASF238
+ 1503 035f F5 15       		.1byte	0xf7,0x15
+ 1504 0360 05          		.1byte	0x5
+ 1505 0361 00 00 00 00 		.4byte	.LASF239
+ 1506 0363 F6 15       		.1byte	0xf8,0x15
+ 1507 0364 05          		.1byte	0x5
+ 1508 0364 00 00 00 00 		.4byte	.LASF240
+ 1509 0366 F7 15       		.1byte	0xc0,0x18
+ 1510 0367 05          		.1byte	0x5
+ 1511 0368 00 00 00 00 		.4byte	.LASF241
+ 1512 036a F8 15       		.1byte	0x80,0x19
+ 1513 036b 05          		.1byte	0x5
+ 1514 036b 00 00 00 00 		.4byte	.LASF242
+ 1515 036d C0 18       		.1byte	0x81,0x19
+ 1516 036e 05          		.1byte	0x5
+ 1517 036f 00 00 00 00 		.4byte	.LASF243
+ 1518 0371 80 19       		.1byte	0x82,0x19
+ 1519 0372 05          		.1byte	0x5
+ 1520 0372 00 00 00 00 		.4byte	.LASF244
+ 1521 0374 81 19       		.1byte	0x83,0x19
+ 1522 0375 05          		.1byte	0x0
+ 1523 0376 00 00 00 00 		.1byte	0x7
+ 1524 0378 82 19       		.4byte	.LASF245
+ 1525 0379 05          		.1byte	0x4
+ 1526 0379 00 00 00 00 		.2byte	0x29c
+ 1527 037b 83 19       		.4byte	0x2e2
+ 1528 037c 00          		.1byte	0x8
+ 1529 037d 07          		.1byte	0x2
+ 1530 037d 00 00 00 00 		.1byte	0x4
+ 1531 037f 04          		.2byte	0x2a0
+ 1532 0380 02 9C       		.4byte	0x71f
+ 1533 0381 00 00 02 E2 		.1byte	0x9
+ 1534 0383 08          		.4byte	.LASF247
+ 1535 0383 02          		.1byte	0x4
+ 1536 0384 04          		.2byte	0x2a1
+ 1537 0384 02 A0       		.4byte	0x6fa
+ 1538 0385 00 00 07 1F 		.1byte	0x2
+ 1539 0387 09          		.1byte	0x23
+ 1540 0388 00 00 00 00 		.1byte	0x0
+ 1541 038a 04          		.1byte	0x0
+ 1542 038a 02 A1       		.1byte	0x7
+ 1543 038b 00 00 06 FA 		.4byte	.LASF246
+ 1544 038d 02          		.1byte	0x4
+ 1545 038e 23          		.2byte	0x2a4
+ 1546 038e 00          		.4byte	0x706
+ 1547 038f 00          		.1byte	0xa
+ 1548 038f 07          		.1byte	0x2
+ 1549 0390 00 00 00 00 		.4byte	0x29
+ 1550 0392 04          		.1byte	0x8
+ 1551 0392 02 A4       		.1byte	0xe
+ 1552 0393 00 00 07 06 		.1byte	0x5
+ 1553 0395 0A          		.2byte	0x232
+ 1554 0396 02          		.4byte	0x7a4
+ 1555 0396 00 00 00 29 		.1byte	0x9
+ 1556 0398 08          		.4byte	.LASF248
+ 1557 0399 0E          		.1byte	0x5
+ 1558 0399 05          		.2byte	0x233
+ 1559 039a 02 32       		.4byte	0x71f
+ 1560 039b 00 00 07 A4 		.1byte	0x2
+ 1561 039d 09          		.1byte	0x23
+ 1562 039d 00 00 00 00 		.1byte	0x0
+ 1563 039f 05          		.1byte	0xb
+ 1564 03a0 02 33       		.ascii "cid\000"
+ 1565 03a1 00 00 07 1F 		.1byte	0x5
+ 1566 03a3 02          		.2byte	0x234
+ 1567 03a3 23          		.4byte	0x3b
+ 1568 03a4 00          		.1byte	0x2
+ 1569 03a4 0B          		.1byte	0x23
+ 1570 03a5 63 69 64 00 		.1byte	0x1
+ 1571 03a7 05          		.1byte	0x9
+ 1572 03a7 02 34       		.4byte	.LASF249
+ 1573 03a8 00 00 00 3B 		.1byte	0x5
+ 1574 03aa 02          		.2byte	0x235
+ 1575 03ab 23          		.4byte	0x3b
+ 1576 03ab 01          		.1byte	0x2
+ 1577 03ac 09          		.1byte	0x23
+ 1578 03ac 00 00 00 00 		.1byte	0x2
+ 1579 03ae 05          		.1byte	0x9
+ 1580 03af 02 35       		.4byte	.LASF250
+ 1581 03b0 00 00 00 3B 		.1byte	0x5
+ 1582 03b2 02          		.2byte	0x236
+ 1583 03b2 23          		.4byte	0x3b
+ 1584 03b3 02          		.1byte	0x2
+ 1585 03b3 09          		.1byte	0x23
+ 1586 03b4 00 00 00 00 		.1byte	0x3
+ 1587 03b6 05          		.1byte	0x9
+ 1588 03b6 02 36       		.4byte	.LASF251
+ 1589 03b7 00 00 00 3B 		.1byte	0x5
+ 1590 03b9 02          		.2byte	0x23b
+ 1591 03ba 23          		.4byte	0x3b
+ 1592 03ba 03          		.1byte	0x2
+ 1593 03bb 09          		.1byte	0x23
+ 1594 03bb 00 00 00 00 		.1byte	0x4
+ 1595 03bd 05          		.1byte	0x9
+ 1596 03be 02 3B       		.4byte	.LASF252
+ 1597 03bf 00 00 00 3B 		.1byte	0x5
+ 1598 03c1 02          		.2byte	0x23c
+ 1599 03c1 23          		.4byte	0x3b
+ 1600 03c2 04          		.1byte	0x2
+ 1601 03c2 09          		.1byte	0x23
+ 1602 03c3 00 00 00 00 		.1byte	0x5
+ 1603 03c5 05          		.1byte	0x9
+ 1604 03c5 02 3C       		.4byte	.LASF253
+ 1605 03c6 00 00 00 3B 		.1byte	0x5
+ 1606 03c8 02          		.2byte	0x23d
+ 1607 03c9 23          		.4byte	0x72b
+ 1608 03c9 05          		.1byte	0x2
+ 1609 03ca 09          		.1byte	0x23
+ 1610 03ca 00 00 00 00 		.1byte	0x6
+ 1611 03cc 05          		.1byte	0x0
+ 1612 03cd 02 3D       		.1byte	0x7
+ 1613 03ce 00 00 07 2B 		.4byte	.LASF254
+ 1614 03d0 02          		.1byte	0x5
+ 1615 03d0 23          		.2byte	0x23e
+ 1616 03d1 06          		.4byte	0x731
+ 1617 03d1 00          		.1byte	0x4
+ 1618 03d2 07          		.1byte	0x2
+ 1619 03d2 00 00 00 00 		.1byte	0x6
+ 1620 03d4 05          		.1byte	0x37
+ 1621 03d5 02 3E       		.4byte	0x7d3
+ 1622 03d6 00 00 07 31 		.1byte	0x5
+ 1623 03d8 04          		.4byte	.LASF255
+ 1624 03d8 02          		.1byte	0x0
+ 1625 03d9 06          		.1byte	0x5
+ 1626 03d9 37          		.4byte	.LASF256
+ 1627 03da 00 00 07 D3 		.1byte	0x1
+ 1628 03dc 05          		.1byte	0x5
+ 1629 03dc 00 00 00 00 		.4byte	.LASF257
+ 1630 03de 00          		.1byte	0x2
+ 1631 03df 05          		.1byte	0x5
+ 1632 03df 00 00 00 00 		.4byte	.LASF258
+ 1633 03e1 01          		.1byte	0xf4,0xff,0x3
+ 1634 03e2 05          		.1byte	0x0
+ 1635 03e2 00 00 00 00 		.1byte	0x2
+ 1636 03e4 02          		.4byte	.LASF259
+ 1637 03e5 05          		.1byte	0x6
+ 1638 03e5 00 00 00 00 		.1byte	0x3d
+ 1639 03e7 F4 FF 03    		.4byte	0x7b0
+ 1640 03e9 00          		.1byte	0xa
+ 1641 03e9 02          		.1byte	0x2
+ 1642 03ea 00 00 00 00 		.4byte	0x3b
+ 1643 03ec 06          		.1byte	0xc
+ 1644 03ec 3D          		.1byte	0x6
+ 1645 03ed 00 00 07 B0 		.1byte	0x1
+ 1646 03ef 0A          		.1byte	0x26
+ 1647 03ef 02          		.4byte	0x817
+ 1648 03f0 00 00 00 3B 		.1byte	0xd
+ 1649 03f2 0C          		.4byte	.LASF260
+ 1650 03f2 06          		.1byte	0x1
+ 1651 03f3 01          		.1byte	0x28
+ 1652 03f3 26          		.4byte	0x29
+ 1653 03f4 00 00 08 17 		.1byte	0x2
+ 1654 03f6 0D          		.1byte	0x23
+ 1655 03f6 00 00 00 00 		.1byte	0x0
+ 1656 03f8 01          		.1byte	0xd
+ 1657 03f9 28          		.4byte	.LASF261
+ 1658 03f9 00 00 00 29 		.1byte	0x1
+ 1659 03fb 02          		.1byte	0x2b
+ 1660 03fc 23          		.4byte	0x7d3
+ 1661 03fc 00          		.1byte	0x2
+ 1662 03fd 0D          		.1byte	0x23
+ 1663 03fd 00 00 00 00 		.1byte	0x1
+ 1664 03ff 01          		.1byte	0xd
+ 1665 0400 2B          		.4byte	.LASF262
+ 1666 0400 00 00 07 D3 		.1byte	0x1
+ 1667 0402 02          		.1byte	0x2e
+ 1668 0403 23          		.4byte	0x3b
+ 1669 0403 01          		.1byte	0x2
+ 1670 0404 0D          		.1byte	0x23
+ 1671 0404 00 00 00 00 		.1byte	0x2
+ 1672 0406 01          		.1byte	0x0
+ 1673 0407 2E          		.1byte	0x2
+ 1674 0407 00 00 00 3B 		.4byte	.LASF263
+ 1675 0409 02          		.1byte	0x1
+ 1676 040a 23          		.1byte	0x30
+ 1677 040a 02          		.4byte	0x7e4
+ 1678 040b 00          		.1byte	0xe
+ 1679 040b 02          		.1byte	0x1
+ 1680 040c 00 00 00 00 		.4byte	.LASF264
+ 1681 040e 01          		.1byte	0x1
+ 1682 040e 30          		.1byte	0xb0
+ 1683 040f 00 00 07 E4 		.1byte	0x1
+ 1684 0411 0E          		.4byte	.LFB4
+ 1685 0411 01          		.4byte	.LFE4
+ 1686 0412 00 00 00 00 		.1byte	0x1
+ 1687 0414 01          		.1byte	0x55
+ 1688 0414 B0          		.1byte	0xf
+ 1689 0415 01          		.1byte	0x1
+ 1690 0415 00 00 00 00 		.4byte	.LASF286
+ 1691 0417 00 00 00 00 		.1byte	0x1
+ 1692 0419 01          		.2byte	0x19f
+ 1693 041a 55          		.1byte	0x1
+ 1694 041a 0F          		.4byte	0x74
+ 1695 041b 01          		.4byte	.LFB9
+ 1696 041b 00 00 00 00 		.4byte	.LFE9
+ 1697 041d 01          		.1byte	0x1
+ 1698 041e 01 9F       		.1byte	0x55
+ 1699 041f 01          		.4byte	0x862
+ 1700 041f 00 00 00 74 		.1byte	0x10
+ 1701 0421 00 00 00 00 		.4byte	.LASF249
+ 1702 0423 00 00 00 00 		.1byte	0x1
+ 1703 0425 01          		.2byte	0x19e
+ 1704 0426 55          		.4byte	0x3b
+ 1705 0426 00 00 08 62 		.4byte	.LLST2
+ 1706 0428 10          		.1byte	0x0
+ 1707 0429 00 00 00 00 		.1byte	0x11
+ 1708 042b 01          		.1byte	0x1
+ 1709 042b 01 9E       		.4byte	.LASF265
+ 1710 042c 00 00 00 3B 		.1byte	0x1
+ 1711 042e 00 00 00 00 		.1byte	0x97
+ 1712 0430 00          		.1byte	0x1
+ 1713 0431 11          		.4byte	.LFB3
+ 1714 0431 01          		.4byte	.LFE3
+ 1715 0432 00 00 00 00 		.4byte	.LLST3
+ 1716 0434 01          		.1byte	0x12
+ 1717 0434 97          		.1byte	0x1
+ 1718 0435 01          		.4byte	.LASF266
+ 1719 0435 00 00 00 00 		.1byte	0x1
+ 1720 0437 00 00 00 00 		.2byte	0x1b4
+ 1721 0439 00 00 00 00 		.1byte	0x1
+ 1722 043b 12          		.4byte	.LFB10
+ 1723 043c 01          		.4byte	.LFE10
+ 1724 043c 00 00 00 00 		.4byte	.LLST4
+ 1725 043e 01          		.1byte	0x13
+ 1726 043f 01 B4       		.1byte	0x1
+ 1727 0440 01          		.4byte	.LASF270
+ 1728 0440 00 00 00 00 		.1byte	0x1
+ 1729 0442 00 00 00 00 		.2byte	0x17b
+ 1730 0444 00 00 00 00 		.1byte	0x1
+ 1731 0446 13          		.4byte	.LFB8
+ 1732 0447 01          		.4byte	.LFE8
+ 1733 0447 00 00 00 00 		.4byte	.LLST5
+ 1734 0449 01          		.4byte	0x8b8
+ 1735 044a 01 7B       		.1byte	0x10
+ 1736 044b 01          		.4byte	.LASF267
+ 1737 044b 00 00 00 00 		.1byte	0x1
+ 1738 044d 00 00 00 00 		.2byte	0x17a
+ 1739 044f 00 00 00 00 		.4byte	0x7de
+ 1740 0451 00 00 08 B8 		.4byte	.LLST6
+ 1741 0453 10          		.1byte	0x0
+ 1742 0454 00 00 00 00 		.1byte	0x14
+ 1743 0456 01          		.4byte	.LASF287
+ 1744 0456 01 7A       		.1byte	0x1
+ 1745 0457 00 00 07 DE 		.1byte	0x69
+ 1746 0459 00 00 00 00 		.1byte	0x1
+ 1747 045b 00          		.4byte	0x29
+ 1748 045c 14          		.4byte	.LFB2
+ 1749 045c 00 00 00 00 		.4byte	.LFE2
+ 1750 045e 01          		.4byte	.LLST7
+ 1751 045f 69          		.4byte	0x8eb
+ 1752 045f 01          		.1byte	0x15
+ 1753 0460 00 00 00 29 		.4byte	.LASF268
+ 1754 0462 00 00 00 00 		.1byte	0x1
+ 1755 0464 00 00 00 00 		.1byte	0x6a
+ 1756 0466 00 00 00 00 		.4byte	0x4d
+ 1757 0468 00 00 08 EB 		.1byte	0x15
+ 1758 046a 15          		.4byte	.LASF269
+ 1759 046a 00 00 00 00 		.1byte	0x1
+ 1760 046c 01          		.1byte	0x6b
+ 1761 046d 6A          		.4byte	0x4d
+ 1762 046d 00 00 00 4D 		.1byte	0x0
+ 1763 046f 15          		.1byte	0x13
+ 1764 0470 00 00 00 00 		.1byte	0x1
+ 1765 0472 01          		.4byte	.LASF271
+ 1766 0472 6B          		.1byte	0x1
+ 1767 0473 00 00 00 4D 		.2byte	0x14e
+ 1768 0475 00          		.1byte	0x1
+ 1769 0475 13          		.4byte	.LFB7
+ 1770 0476 01          		.4byte	.LFE7
+ 1771 0476 00 00 00 00 		.4byte	.LLST8
+ 1772 0478 01          		.4byte	0x932
+ 1773 0479 01 4E       		.1byte	0x10
+ 1774 047a 01          		.4byte	.LASF272
+ 1775 047a 00 00 00 00 		.1byte	0x1
+ 1776 047c 00 00 00 00 		.2byte	0x14d
+ 1777 047e 00 00 00 00 		.4byte	0x3b
+ 1778 0480 00 00 09 32 		.4byte	.LLST9
+ 1779 0482 10          		.1byte	0x16
+ 1780 0483 00 00 00 00 		.4byte	.LASF273
+ 1781 0485 01          		.1byte	0x1
+ 1782 0485 01 4D       		.2byte	0x14f
+ 1783 0486 00 00 00 3B 		.4byte	0x29
+ 1784 0488 00 00 00 00 		.1byte	0x17
+ 1785 048a 16          		.4byte	.LASF276
+ 1786 048b 00 00 00 00 		.1byte	0x1
+ 1787 048d 01          		.2byte	0x150
+ 1788 048d 01 4F       		.4byte	0x29
+ 1789 048e 00 00 00 29 		.4byte	.LLST10
+ 1790 0490 17          		.1byte	0x0
+ 1791 0491 00 00 00 00 		.1byte	0x13
+ 1792 0493 01          		.1byte	0x1
+ 1793 0493 01 50       		.4byte	.LASF274
+ 1794 0494 00 00 00 29 		.1byte	0x1
+ 1795 0496 00 00 00 00 		.2byte	0x102
+ 1796 0498 00          		.1byte	0x1
+ 1797 0499 13          		.4byte	.LFB6
+ 1798 0499 01          		.4byte	.LFE6
+ 1799 049a 00 00 00 00 		.4byte	.LLST11
+ 1800 049c 01          		.4byte	0x98b
+ 1801 049c 01 02       		.1byte	0x10
+ 1802 049d 01          		.4byte	.LASF275
+ 1803 049e 00 00 00 00 		.1byte	0x1
+ 1804 04a0 00 00 00 00 		.2byte	0x101
+ 1805 04a2 00 00 00 00 		.4byte	0x98b
+ 1806 04a4 00 00 09 8B 		.4byte	.LLST12
+ 1807 04a6 10          		.1byte	0x18
+ 1808 04a6 00 00 00 00 		.4byte	.LASF277
+ 1809 04a8 01          		.1byte	0x1
+ 1810 04a9 01 01       		.2byte	0x103
+ 1811 04aa 00 00 09 8B 		.4byte	0x72b
+ 1812 04ac 00 00 00 00 		.1byte	0x2
+ 1813 04ae 18          		.1byte	0x76
+ 1814 04ae 00 00 00 00 		.1byte	0x3
+ 1815 04b0 01          		.1byte	0x17
+ 1816 04b1 01 03       		.4byte	.LASF278
+ 1817 04b2 00 00 07 2B 		.1byte	0x1
+ 1818 04b4 02          		.2byte	0x104
+ 1819 04b4 76          		.4byte	0x3b
+ 1820 04b5 03          		.4byte	.LLST13
+ 1821 04b5 17          		.1byte	0x19
+ 1822 04b6 00 00 00 00 		.ascii "rc\000"
+ 1823 04b8 01          		.1byte	0x1
+ 1824 04b8 01 04       		.2byte	0x105
+ 1825 04b9 00 00 00 3B 		.4byte	0x2d4
+ 1826 04bb 00 00 00 00 		.4byte	.LLST14
+ 1827 04bd 19          		.1byte	0x0
+ 1828 04be 72 63 00    		.1byte	0xa
+ 1829 04bf 01          		.1byte	0x2
+ 1830 04c0 01 05       		.4byte	0x7a4
+ 1831 04c1 00 00 02 D4 		.1byte	0x1a
+ 1832 04c3 00 00 00 00 		.1byte	0x1
+ 1833 04c5 00          		.4byte	.LASF279
+ 1834 04c5 0A          		.1byte	0x1
+ 1835 04c6 02          		.1byte	0xc8
+ 1836 04c6 00 00 07 A4 		.1byte	0x1
+ 1837 04c8 1A          		.4byte	.LFB5
+ 1838 04c9 01          		.4byte	.LFE5
+ 1839 04c9 00 00 00 00 		.4byte	.LLST15
+ 1840 04cb 01          		.4byte	0x9f3
+ 1841 04cc C8          		.1byte	0x1b
+ 1842 04cc 01          		.4byte	.LASF275
+ 1843 04cd 00 00 00 00 		.1byte	0x1
+ 1844 04cf 00 00 00 00 		.1byte	0xc7
+ 1845 04d1 00 00 00 00 		.4byte	0x98b
+ 1846 04d3 00 00 09 F3 		.4byte	.LLST16
+ 1847 04d5 1B          		.1byte	0x1c
+ 1848 04d5 00 00 00 00 		.4byte	.LASF280
+ 1849 04d7 01          		.1byte	0x1
+ 1850 04d8 C7          		.1byte	0xc9
+ 1851 04d8 00 00 09 8B 		.4byte	0x3b
+ 1852 04da 00 00 00 00 		.4byte	.LLST17
+ 1853 04dc 1C          		.1byte	0x1d
+ 1854 04dd 00 00 00 00 		.4byte	.LASF253
+ 1855 04df 01          		.1byte	0x1
+ 1856 04df C9          		.1byte	0xca
+ 1857 04e0 00 00 00 3B 		.4byte	0x9f3
+ 1858 04e2 00 00 00 00 		.1byte	0x2
+ 1859 04e4 1D          		.1byte	0x76
+ 1860 04e4 00 00 00 00 		.1byte	0x4
+ 1861 04e6 01          		.1byte	0x1d
+ 1862 04e7 CA          		.4byte	.LASF281
+ 1863 04e7 00 00 09 F3 		.1byte	0x1
+ 1864 04e9 02          		.1byte	0xcb
+ 1865 04ea 76          		.4byte	0x72b
+ 1866 04ea 04          		.1byte	0x2
+ 1867 04eb 1D          		.1byte	0x76
+ 1868 04eb 00 00 00 00 		.1byte	0x3
+ 1869 04ed 01          		.1byte	0x1e
+ 1870 04ee CB          		.ascii "rc\000"
+ 1871 04ee 00 00 07 2B 		.1byte	0x1
+ 1872 04f0 02          		.1byte	0xcc
+ 1873 04f1 76          		.4byte	0x2d4
+ 1874 04f1 03          		.4byte	.LLST18
+ 1875 04f2 1E          		.1byte	0x0
+ 1876 04f2 72 63 00    		.1byte	0x1f
+ 1877 04f4 01          		.4byte	0x29
+ 1878 04f4 CC          		.4byte	0xa03
+ 1879 04f5 00 00 02 D4 		.1byte	0x20
+ 1880 04f7 00 00 00 00 		.4byte	0x2df
+ 1881 04f9 00          		.1byte	0x1
+ 1882 04f9 1F          		.1byte	0x0
+ 1883 04fa 00 00 00 29 		.1byte	0x1d
+ 1884 04fc 00 00 0A 03 		.4byte	.LASF282
+ 1885 04fe 20          		.1byte	0x1
+ 1886 04fe 00 00 02 DF 		.1byte	0x37
+ 1887 0500 01          		.4byte	0x817
+ 1888 0501 00          		.1byte	0x5
+ 1889 0501 1D          		.1byte	0x3
+ 1890 0502 00 00 00 00 		.4byte	g_batt_data
+ 1891 0504 01          		.1byte	0x0
+ 1892 0504 37          		.section	.debug_abbrev
+ 1893 0505 00 00 08 17 		.1byte	0x1
+ 1894 0507 05          		.1byte	0x11
+ 1895 0507 03          		.1byte	0x1
+ 1896 0508 00 00 00 00 		.1byte	0x25
+ 1897 050a 00          		.1byte	0xe
+ 1898                 		.1byte	0x13
+ 1899 0000 01          		.1byte	0xb
+ 1900 0000 11          		.1byte	0x3
+ 1901 0001 01          		.1byte	0xe
+ 1902 0001 25          		.1byte	0x1b
+ 1903 0002 0E          		.1byte	0xe
+ 1904 0002 13          		.1byte	0x11
+ 1905 0003 0B          		.1byte	0x1
+ 1906 0003 03          		.1byte	0x52
+ 1907 0004 0E          		.1byte	0x1
+ 1908 0004 1B          		.1byte	0x55
+ 1909 0005 0E          		.1byte	0x6
+ 1910 0005 11          		.1byte	0x10
+ 1911 0006 01          		.1byte	0x6
+ 1912 0006 52          		.1byte	0x0
+ 1913 0007 01          		.1byte	0x0
+ 1914 0007 55          		.1byte	0x2
+ 1915 0008 06          		.1byte	0x16
+ 1916 0008 10          		.1byte	0x0
+ 1917 0009 06          		.1byte	0x3
+ 1918 0009 00          		.1byte	0xe
+ 1919 000a 00          		.1byte	0x3a
+ 1920 000a 02          		.1byte	0xb
+ 1921 000b 16          		.1byte	0x3b
+ 1922 000b 00          		.1byte	0xb
+ 1923 000c 03          		.1byte	0x49
+ 1924 000c 0E          		.1byte	0x13
+ 1925 000d 3A          		.1byte	0x0
+ 1926 000d 0B          		.1byte	0x0
+ 1927 000e 3B          		.1byte	0x3
+ 1928 000e 0B          		.1byte	0x24
+ 1929 000f 49          		.1byte	0x0
+ 1930 000f 13          		.1byte	0xb
+ 1931 0010 00          		.1byte	0xb
+ 1932 0010 00          		.1byte	0x3e
+ 1933 0011 03          		.1byte	0xb
+ 1934 0011 24          		.1byte	0x3
+ 1935 0012 00          		.1byte	0xe
+ 1936 0012 0B          		.1byte	0x0
+ 1937 0013 0B          		.1byte	0x0
+ 1938 0013 3E          		.1byte	0x4
+ 1939 0014 0B          		.1byte	0x4
+ 1940 0014 03          		.1byte	0x1
+ 1941 0015 0E          		.1byte	0xb
+ 1942 0015 00          		.1byte	0xb
+ 1943 0016 00          		.1byte	0x3a
+ 1944 0016 04          		.1byte	0xb
+ 1945 0017 04          		.1byte	0x3b
+ 1946 0017 01          		.1byte	0xb
+ 1947 0018 0B          		.1byte	0x1
+ 1948 0018 0B          		.1byte	0x13
+ 1949 0019 3A          		.1byte	0x0
+ 1950 0019 0B          		.1byte	0x0
+ 1951 001a 3B          		.1byte	0x5
+ 1952 001a 0B          		.1byte	0x28
+ 1953 001b 01          		.1byte	0x0
+ 1954 001b 13          		.1byte	0x3
+ 1955 001c 00          		.1byte	0xe
+ 1956 001c 00          		.1byte	0x1c
+ 1957 001d 05          		.1byte	0xd
+ 1958 001d 28          		.1byte	0x0
+ 1959 001e 00          		.1byte	0x0
+ 1960 001e 03          		.1byte	0x6
+ 1961 001f 0E          		.1byte	0x24
+ 1962 001f 1C          		.1byte	0x0
+ 1963 0020 0D          		.1byte	0xb
+ 1964 0020 00          		.1byte	0xb
+ 1965 0021 00          		.1byte	0x3e
+ 1966 0021 06          		.1byte	0xb
+ 1967 0022 24          		.1byte	0x0
+ 1968 0022 00          		.1byte	0x0
+ 1969 0023 0B          		.1byte	0x7
+ 1970 0023 0B          		.1byte	0x16
+ 1971 0024 3E          		.1byte	0x0
+ 1972 0024 0B          		.1byte	0x3
+ 1973 0025 00          		.1byte	0xe
+ 1974 0025 00          		.1byte	0x3a
+ 1975 0026 07          		.1byte	0xb
+ 1976 0026 16          		.1byte	0x3b
+ 1977 0027 00          		.1byte	0x5
+ 1978 0027 03          		.1byte	0x49
+ 1979 0028 0E          		.1byte	0x13
+ 1980 0028 3A          		.1byte	0x0
+ 1981 0029 0B          		.1byte	0x0
+ 1982 0029 3B          		.1byte	0x8
+ 1983 002a 05          		.1byte	0x13
+ 1984 002a 49          		.1byte	0x1
+ 1985 002b 13          		.1byte	0xb
+ 1986 002b 00          		.1byte	0xb
+ 1987 002c 00          		.1byte	0x3a
+ 1988 002c 08          		.1byte	0xb
+ 1989 002d 13          		.1byte	0x3b
+ 1990 002d 01          		.1byte	0x5
+ 1991 002e 0B          		.1byte	0x1
+ 1992 002e 0B          		.1byte	0x13
+ 1993 002f 3A          		.1byte	0x0
+ 1994 002f 0B          		.1byte	0x0
+ 1995 0030 3B          		.1byte	0x9
+ 1996 0030 05          		.1byte	0xd
+ 1997 0031 01          		.1byte	0x0
+ 1998 0031 13          		.1byte	0x3
+ 1999 0032 00          		.1byte	0xe
+ 2000 0032 00          		.1byte	0x3a
+ 2001 0033 09          		.1byte	0xb
+ 2002 0033 0D          		.1byte	0x3b
+ 2003 0034 00          		.1byte	0x5
+ 2004 0034 03          		.1byte	0x49
+ 2005 0035 0E          		.1byte	0x13
+ 2006 0035 3A          		.1byte	0x38
+ 2007 0036 0B          		.1byte	0xa
+ 2008 0036 3B          		.1byte	0x0
+ 2009 0037 05          		.1byte	0x0
+ 2010 0037 49          		.1byte	0xa
+ 2011 0038 13          		.1byte	0xf
+ 2012 0038 38          		.1byte	0x0
+ 2013 0039 0A          		.1byte	0xb
+ 2014 0039 00          		.1byte	0xb
+ 2015 003a 00          		.1byte	0x49
+ 2016 003a 0A          		.1byte	0x13
+ 2017 003b 0F          		.1byte	0x0
+ 2018 003b 00          		.1byte	0x0
+ 2019 003c 0B          		.1byte	0xb
+ 2020 003c 0B          		.1byte	0xd
+ 2021 003d 49          		.1byte	0x0
+ 2022 003d 13          		.1byte	0x3
+ 2023 003e 00          		.1byte	0x8
+ 2024 003e 00          		.1byte	0x3a
+ 2025 003f 0B          		.1byte	0xb
+ 2026 003f 0D          		.1byte	0x3b
+ 2027 0040 00          		.1byte	0x5
+ 2028 0040 03          		.1byte	0x49
+ 2029 0041 08          		.1byte	0x13
+ 2030 0041 3A          		.1byte	0x38
+ 2031 0042 0B          		.1byte	0xa
+ 2032 0042 3B          		.1byte	0x0
+ 2033 0043 05          		.1byte	0x0
+ 2034 0043 49          		.1byte	0xc
+ 2035 0044 13          		.1byte	0x13
+ 2036 0044 38          		.1byte	0x1
+ 2037 0045 0A          		.1byte	0xb
+ 2038 0045 00          		.1byte	0xb
+ 2039 0046 00          		.1byte	0x3a
+ 2040 0046 0C          		.1byte	0xb
+ 2041 0047 13          		.1byte	0x3b
+ 2042 0047 01          		.1byte	0xb
+ 2043 0048 0B          		.1byte	0x1
+ 2044 0048 0B          		.1byte	0x13
+ 2045 0049 3A          		.1byte	0x0
+ 2046 0049 0B          		.1byte	0x0
+ 2047 004a 3B          		.1byte	0xd
+ 2048 004a 0B          		.1byte	0xd
+ 2049 004b 01          		.1byte	0x0
+ 2050 004b 13          		.1byte	0x3
+ 2051 004c 00          		.1byte	0xe
+ 2052 004c 00          		.1byte	0x3a
+ 2053 004d 0D          		.1byte	0xb
+ 2054 004d 0D          		.1byte	0x3b
+ 2055 004e 00          		.1byte	0xb
+ 2056 004e 03          		.1byte	0x49
+ 2057 004f 0E          		.1byte	0x13
+ 2058 004f 3A          		.1byte	0x38
+ 2059 0050 0B          		.1byte	0xa
+ 2060 0050 3B          		.1byte	0x0
+ 2061 0051 0B          		.1byte	0x0
+ 2062 0051 49          		.1byte	0xe
+ 2063 0052 13          		.1byte	0x2e
+ 2064 0052 38          		.1byte	0x0
+ 2065 0053 0A          		.1byte	0x3f
+ 2066 0053 00          		.1byte	0xc
+ 2067 0054 00          		.1byte	0x3
+ 2068 0054 0E          		.1byte	0xe
+ 2069 0055 2E          		.1byte	0x3a
+ 2070 0055 00          		.1byte	0xb
+ 2071 0056 3F          		.1byte	0x3b
+ 2072 0056 0C          		.1byte	0xb
+ 2073 0057 03          		.1byte	0x27
+ 2074 0057 0E          		.1byte	0xc
+ 2075 0058 3A          		.1byte	0x11
+ 2076 0058 0B          		.1byte	0x1
+ 2077 0059 3B          		.1byte	0x12
+ 2078 0059 0B          		.1byte	0x1
+ 2079 005a 27          		.1byte	0x40
+ 2080 005a 0C          		.1byte	0xa
+ 2081 005b 11          		.1byte	0x0
+ 2082 005b 01          		.1byte	0x0
+ 2083 005c 12          		.1byte	0xf
+ 2084 005c 01          		.1byte	0x2e
+ 2085 005d 40          		.1byte	0x1
+ 2086 005d 0A          		.1byte	0x3f
+ 2087 005e 00          		.1byte	0xc
+ 2088 005e 00          		.1byte	0x3
+ 2089 005f 0F          		.1byte	0xe
+ 2090 005f 2E          		.1byte	0x3a
+ 2091 0060 01          		.1byte	0xb
+ 2092 0060 3F          		.1byte	0x3b
+ 2093 0061 0C          		.1byte	0x5
+ 2094 0061 03          		.1byte	0x27
+ 2095 0062 0E          		.1byte	0xc
+ 2096 0062 3A          		.1byte	0x49
+ 2097 0063 0B          		.1byte	0x13
+ 2098 0063 3B          		.1byte	0x11
+ 2099 0064 05          		.1byte	0x1
+ 2100 0064 27          		.1byte	0x12
+ 2101 0065 0C          		.1byte	0x1
+ 2102 0065 49          		.1byte	0x40
+ 2103 0066 13          		.1byte	0xa
+ 2104 0066 11          		.1byte	0x1
+ 2105 0067 01          		.1byte	0x13
+ 2106 0067 12          		.1byte	0x0
+ 2107 0068 01          		.1byte	0x0
+ 2108 0068 40          		.1byte	0x10
+ 2109 0069 0A          		.1byte	0x5
+ 2110 0069 01          		.1byte	0x0
+ 2111 006a 13          		.1byte	0x3
+ 2112 006a 00          		.1byte	0xe
+ 2113 006b 00          		.1byte	0x3a
+ 2114 006b 10          		.1byte	0xb
+ 2115 006c 05          		.1byte	0x3b
+ 2116 006c 00          		.1byte	0x5
+ 2117 006d 03          		.1byte	0x49
+ 2118 006d 0E          		.1byte	0x13
+ 2119 006e 3A          		.1byte	0x2
+ 2120 006e 0B          		.1byte	0x6
+ 2121 006f 3B          		.1byte	0x0
+ 2122 006f 05          		.1byte	0x0
+ 2123 0070 49          		.1byte	0x11
+ 2124 0070 13          		.1byte	0x2e
+ 2125 0071 02          		.1byte	0x0
+ 2126 0071 06          		.1byte	0x3f
+ 2127 0072 00          		.1byte	0xc
+ 2128 0072 00          		.1byte	0x3
+ 2129 0073 11          		.1byte	0xe
+ 2130 0073 2E          		.1byte	0x3a
+ 2131 0074 00          		.1byte	0xb
+ 2132 0074 3F          		.1byte	0x3b
+ 2133 0075 0C          		.1byte	0xb
+ 2134 0075 03          		.1byte	0x27
+ 2135 0076 0E          		.1byte	0xc
+ 2136 0076 3A          		.1byte	0x11
+ 2137 0077 0B          		.1byte	0x1
+ 2138 0077 3B          		.1byte	0x12
+ 2139 0078 0B          		.1byte	0x1
+ 2140 0078 27          		.1byte	0x40
+ 2141 0079 0C          		.1byte	0x6
+ 2142 0079 11          		.1byte	0x0
+ 2143 007a 01          		.1byte	0x0
+ 2144 007a 12          		.1byte	0x12
+ 2145 007b 01          		.1byte	0x2e
+ 2146 007b 40          		.1byte	0x0
+ 2147 007c 06          		.1byte	0x3f
+ 2148 007c 00          		.1byte	0xc
+ 2149 007d 00          		.1byte	0x3
+ 2150 007d 12          		.1byte	0xe
+ 2151 007e 2E          		.1byte	0x3a
+ 2152 007e 00          		.1byte	0xb
+ 2153 007f 3F          		.1byte	0x3b
+ 2154 007f 0C          		.1byte	0x5
+ 2155 0080 03          		.1byte	0x27
+ 2156 0080 0E          		.1byte	0xc
+ 2157 0081 3A          		.1byte	0x11
+ 2158 0081 0B          		.1byte	0x1
+ 2159 0082 3B          		.1byte	0x12
+ 2160 0082 05          		.1byte	0x1
+ 2161 0083 27          		.1byte	0x40
+ 2162 0083 0C          		.1byte	0x6
+ 2163 0084 11          		.1byte	0x0
+ 2164 0084 01          		.1byte	0x0
+ 2165 0085 12          		.1byte	0x13
+ 2166 0085 01          		.1byte	0x2e
+ 2167 0086 40          		.1byte	0x1
+ 2168 0086 06          		.1byte	0x3f
+ 2169 0087 00          		.1byte	0xc
+ 2170 0087 00          		.1byte	0x3
+ 2171 0088 13          		.1byte	0xe
+ 2172 0088 2E          		.1byte	0x3a
+ 2173 0089 01          		.1byte	0xb
+ 2174 0089 3F          		.1byte	0x3b
+ 2175 008a 0C          		.1byte	0x5
+ 2176 008a 03          		.1byte	0x27
+ 2177 008b 0E          		.1byte	0xc
+ 2178 008b 3A          		.1byte	0x11
+ 2179 008c 0B          		.1byte	0x1
+ 2180 008c 3B          		.1byte	0x12
+ 2181 008d 05          		.1byte	0x1
+ 2182 008d 27          		.1byte	0x40
+ 2183 008e 0C          		.1byte	0x6
+ 2184 008e 11          		.1byte	0x1
+ 2185 008f 01          		.1byte	0x13
+ 2186 008f 12          		.1byte	0x0
+ 2187 0090 01          		.1byte	0x0
+ 2188 0090 40          		.1byte	0x14
+ 2189 0091 06          		.1byte	0x2e
+ 2190 0091 01          		.1byte	0x1
+ 2191 0092 13          		.1byte	0x3
+ 2192 0092 00          		.1byte	0xe
+ 2193 0093 00          		.1byte	0x3a
+ 2194 0093 14          		.1byte	0xb
+ 2195 0094 2E          		.1byte	0x3b
+ 2196 0094 01          		.1byte	0xb
+ 2197 0095 03          		.1byte	0x27
+ 2198 0095 0E          		.1byte	0xc
+ 2199 0096 3A          		.1byte	0x49
+ 2200 0096 0B          		.1byte	0x13
+ 2201 0097 3B          		.1byte	0x11
+ 2202 0097 0B          		.1byte	0x1
+ 2203 0098 27          		.1byte	0x12
+ 2204 0098 0C          		.1byte	0x1
+ 2205 0099 49          		.1byte	0x40
+ 2206 0099 13          		.1byte	0x6
+ 2207 009a 11          		.1byte	0x1
+ 2208 009a 01          		.1byte	0x13
+ 2209 009b 12          		.1byte	0x0
+ 2210 009b 01          		.1byte	0x0
+ 2211 009c 40          		.1byte	0x15
+ 2212 009c 06          		.1byte	0x34
+ 2213 009d 01          		.1byte	0x0
+ 2214 009d 13          		.1byte	0x3
+ 2215 009e 00          		.1byte	0xe
+ 2216 009e 00          		.1byte	0x3a
+ 2217 009f 15          		.1byte	0xb
+ 2218 009f 34          		.1byte	0x3b
+ 2219 00a0 00          		.1byte	0xb
+ 2220 00a0 03          		.1byte	0x49
+ 2221 00a1 0E          		.1byte	0x13
+ 2222 00a1 3A          		.1byte	0x0
+ 2223 00a2 0B          		.1byte	0x0
+ 2224 00a2 3B          		.1byte	0x16
+ 2225 00a3 0B          		.1byte	0x34
+ 2226 00a3 49          		.1byte	0x0
+ 2227 00a4 13          		.1byte	0x3
+ 2228 00a4 00          		.1byte	0xe
+ 2229 00a5 00          		.1byte	0x3a
+ 2230 00a5 16          		.1byte	0xb
+ 2231 00a6 34          		.1byte	0x3b
+ 2232 00a6 00          		.1byte	0x5
+ 2233 00a7 03          		.1byte	0x49
+ 2234 00a7 0E          		.1byte	0x13
+ 2235 00a8 3A          		.1byte	0x0
+ 2236 00a8 0B          		.1byte	0x0
+ 2237 00a9 3B          		.1byte	0x17
+ 2238 00a9 05          		.1byte	0x34
+ 2239 00aa 49          		.1byte	0x0
+ 2240 00aa 13          		.1byte	0x3
+ 2241 00ab 00          		.1byte	0xe
+ 2242 00ab 00          		.1byte	0x3a
+ 2243 00ac 17          		.1byte	0xb
+ 2244 00ac 34          		.1byte	0x3b
+ 2245 00ad 00          		.1byte	0x5
+ 2246 00ad 03          		.1byte	0x49
+ 2247 00ae 0E          		.1byte	0x13
+ 2248 00ae 3A          		.1byte	0x2
+ 2249 00af 0B          		.1byte	0x6
+ 2250 00af 3B          		.1byte	0x0
+ 2251 00b0 05          		.1byte	0x0
+ 2252 00b0 49          		.1byte	0x18
+ 2253 00b1 13          		.1byte	0x34
+ 2254 00b1 02          		.1byte	0x0
+ 2255 00b2 06          		.1byte	0x3
+ 2256 00b2 00          		.1byte	0xe
+ 2257 00b3 00          		.1byte	0x3a
+ 2258 00b3 18          		.1byte	0xb
+ 2259 00b4 34          		.1byte	0x3b
+ 2260 00b4 00          		.1byte	0x5
+ 2261 00b5 03          		.1byte	0x49
+ 2262 00b5 0E          		.1byte	0x13
+ 2263 00b6 3A          		.1byte	0x2
+ 2264 00b6 0B          		.1byte	0xa
+ 2265 00b7 3B          		.1byte	0x0
+ 2266 00b7 05          		.1byte	0x0
+ 2267 00b8 49          		.1byte	0x19
+ 2268 00b8 13          		.1byte	0x34
+ 2269 00b9 02          		.1byte	0x0
+ 2270 00b9 0A          		.1byte	0x3
+ 2271 00ba 00          		.1byte	0x8
+ 2272 00ba 00          		.1byte	0x3a
+ 2273 00bb 19          		.1byte	0xb
+ 2274 00bb 34          		.1byte	0x3b
+ 2275 00bc 00          		.1byte	0x5
+ 2276 00bc 03          		.1byte	0x49
+ 2277 00bd 08          		.1byte	0x13
+ 2278 00bd 3A          		.1byte	0x2
+ 2279 00be 0B          		.1byte	0x6
+ 2280 00be 3B          		.1byte	0x0
+ 2281 00bf 05          		.1byte	0x0
+ 2282 00bf 49          		.1byte	0x1a
+ 2283 00c0 13          		.1byte	0x2e
+ 2284 00c0 02          		.1byte	0x1
+ 2285 00c1 06          		.1byte	0x3f
+ 2286 00c1 00          		.1byte	0xc
+ 2287 00c2 00          		.1byte	0x3
+ 2288 00c2 1A          		.1byte	0xe
+ 2289 00c3 2E          		.1byte	0x3a
+ 2290 00c3 01          		.1byte	0xb
+ 2291 00c4 3F          		.1byte	0x3b
+ 2292 00c4 0C          		.1byte	0xb
+ 2293 00c5 03          		.1byte	0x27
+ 2294 00c5 0E          		.1byte	0xc
+ 2295 00c6 3A          		.1byte	0x11
+ 2296 00c6 0B          		.1byte	0x1
+ 2297 00c7 3B          		.1byte	0x12
+ 2298 00c7 0B          		.1byte	0x1
+ 2299 00c8 27          		.1byte	0x40
+ 2300 00c8 0C          		.1byte	0x6
+ 2301 00c9 11          		.1byte	0x1
+ 2302 00c9 01          		.1byte	0x13
+ 2303 00ca 12          		.1byte	0x0
+ 2304 00ca 01          		.1byte	0x0
+ 2305 00cb 40          		.1byte	0x1b
+ 2306 00cb 06          		.1byte	0x5
+ 2307 00cc 01          		.1byte	0x0
+ 2308 00cc 13          		.1byte	0x3
+ 2309 00cd 00          		.1byte	0xe
+ 2310 00cd 00          		.1byte	0x3a
+ 2311 00ce 1B          		.1byte	0xb
+ 2312 00ce 05          		.1byte	0x3b
+ 2313 00cf 00          		.1byte	0xb
+ 2314 00cf 03          		.1byte	0x49
+ 2315 00d0 0E          		.1byte	0x13
+ 2316 00d0 3A          		.1byte	0x2
+ 2317 00d1 0B          		.1byte	0x6
+ 2318 00d1 3B          		.1byte	0x0
+ 2319 00d2 0B          		.1byte	0x0
+ 2320 00d2 49          		.1byte	0x1c
+ 2321 00d3 13          		.1byte	0x34
+ 2322 00d3 02          		.1byte	0x0
+ 2323 00d4 06          		.1byte	0x3
+ 2324 00d4 00          		.1byte	0xe
+ 2325 00d5 00          		.1byte	0x3a
+ 2326 00d5 1C          		.1byte	0xb
+ 2327 00d6 34          		.1byte	0x3b
+ 2328 00d6 00          		.1byte	0xb
+ 2329 00d7 03          		.1byte	0x49
+ 2330 00d7 0E          		.1byte	0x13
+ 2331 00d8 3A          		.1byte	0x2
+ 2332 00d8 0B          		.1byte	0x6
+ 2333 00d9 3B          		.1byte	0x0
+ 2334 00d9 0B          		.1byte	0x0
+ 2335 00da 49          		.1byte	0x1d
+ 2336 00da 13          		.1byte	0x34
+ 2337 00db 02          		.1byte	0x0
+ 2338 00db 06          		.1byte	0x3
+ 2339 00dc 00          		.1byte	0xe
+ 2340 00dc 00          		.1byte	0x3a
+ 2341 00dd 1D          		.1byte	0xb
+ 2342 00dd 34          		.1byte	0x3b
+ 2343 00de 00          		.1byte	0xb
+ 2344 00de 03          		.1byte	0x49
+ 2345 00df 0E          		.1byte	0x13
+ 2346 00df 3A          		.1byte	0x2
+ 2347 00e0 0B          		.1byte	0xa
+ 2348 00e0 3B          		.1byte	0x0
+ 2349 00e1 0B          		.1byte	0x0
+ 2350 00e1 49          		.1byte	0x1e
+ 2351 00e2 13          		.1byte	0x34
+ 2352 00e2 02          		.1byte	0x0
+ 2353 00e3 0A          		.1byte	0x3
+ 2354 00e3 00          		.1byte	0x8
+ 2355 00e4 00          		.1byte	0x3a
+ 2356 00e4 1E          		.1byte	0xb
+ 2357 00e5 34          		.1byte	0x3b
+ 2358 00e5 00          		.1byte	0xb
+ 2359 00e6 03          		.1byte	0x49
+ 2360 00e6 08          		.1byte	0x13
+ 2361 00e7 3A          		.1byte	0x2
+ 2362 00e7 0B          		.1byte	0x6
+ 2363 00e8 3B          		.1byte	0x0
+ 2364 00e8 0B          		.1byte	0x0
+ 2365 00e9 49          		.1byte	0x1f
+ 2366 00e9 13          		.1byte	0x1
+ 2367 00ea 02          		.1byte	0x1
+ 2368 00ea 06          		.1byte	0x49
+ 2369 00eb 00          		.1byte	0x13
+ 2370 00eb 00          		.1byte	0x1
+ 2371 00ec 1F          		.1byte	0x13
+ 2372 00ec 01          		.1byte	0x0
+ 2373 00ed 01          		.1byte	0x0
+ 2374 00ed 49          		.1byte	0x20
+ 2375 00ee 13          		.1byte	0x21
+ 2376 00ee 01          		.1byte	0x0
+ 2377 00ef 13          		.1byte	0x49
+ 2378 00ef 00          		.1byte	0x13
+ 2379 00f0 00          		.1byte	0x2f
+ 2380 00f0 20          		.1byte	0xb
+ 2381 00f1 21          		.1byte	0x0
+ 2382 00f1 00          		.1byte	0x0
+ 2383 00f2 49          		.1byte	0x0
+ 2384 00f2 13          		.section	.debug_pubnames,"",@progbits
+ 2385 00f3 2F          		.4byte	0xdb
+ 2386 00f3 0B          		.2byte	0x2
+ 2387 00f4 00          		.4byte	.Ldebug_info0
+ 2388 00f4 00          		.4byte	0xa15
+ 2389 00f5 00          		.4byte	0x822
+ 2390                 		.ascii "BatteryInitChipReset\000"
+ 2391 0000 00 00 00 DB 		.4byte	0x835
+ 2392 0002 00 02       		.ascii "BatteryCheckHandleRange\000"
+ 2393 0003 00 00 00 00 		.4byte	0x862
+ 2394 0005 00 00 0A 15 		.ascii "BatteryDataInit\000"
+ 2395 0007 00 00 08 22 		.4byte	0x877
+ 2396 0009 42 61 74 74 		.ascii "BatteryBondingNotify\000"
+ 2396      65 72 79 49 
+ 2396      6E 69 74 43 
+ 2396      68 69 70 52 
+ 2396      65 73 65 74 
+ 2397 0013 00 00 08 35 		.4byte	0x88d
+ 2398 0015 42 61 74 74 		.ascii "BatteryReadDataFromNVM\000"
+ 2398      65 72 79 43 
+ 2398      68 65 63 6B 
+ 2398      48 61 6E 64 
+ 2398      6C 65 52 61 
+ 2399 0021 00 00 08 62 		.4byte	0x8eb
+ 2400 0023 42 61 74 74 		.ascii "BatteryUpdateLevel\000"
+ 2400      65 72 79 44 
+ 2400      61 74 61 49 
+ 2400      6E 69 74 00 
+ 2401 002b 00 00 08 77 		.4byte	0x932
+ 2402 002d 42 61 74 74 		.ascii "BatteryHandleAccessWrite\000"
+ 2402      65 72 79 42 
+ 2402      6F 6E 64 69 
+ 2402      6E 67 4E 6F 
+ 2402      74 69 66 79 
+ 2403 0038 00 00 08 8D 		.4byte	0x991
+ 2404 003a 42 61 74 74 		.ascii "BatteryHandleAccessRead\000"
+ 2404      65 72 79 52 
+ 2404      65 61 64 44 
+ 2404      61 74 61 46 
+ 2404      72 6F 6D 4E 
+ 2405 0045 00 00 08 EB 		.4byte	0x0
+ 2406 0047 42 61 74 74 		.section	.debug_aranges,"",@progbits
+ 2406      65 72 79 55 
+ 2406      70 64 61 74 
+ 2406      65 4C 65 76 
+ 2406      65 6C 00 
+ 2407 0051 00 00 09 32 		.4byte	0x5c
+ 2408 0053 42 61 74 74 		.2byte	0x2
+ 2408      65 72 79 48 
+ 2408      61 6E 64 6C 
+ 2408      65 41 63 63 
+ 2408      65 73 73 57 
+ 2409 005f 00 00 09 91 		.4byte	.Ldebug_info0
+ 2410 0061 42 61 74 74 		.1byte	0x4
+ 2410      65 72 79 48 
+ 2410      61 6E 64 6C 
+ 2410      65 41 63 63 
+ 2410      65 73 73 52 
+ 2411 006d 00 00 00 00 		.1byte	0x0
+ 2412                 		.2byte	0x0
+ 2413 0000 00 00 00 5C 		.2byte	0x0
+ 2414 0002 00 02       		.4byte	.LFB4
+ 2415 0003 00 00 00 00 		.4byte	.LFE4-.LFB4
+ 2416 0005 04          		.4byte	.LFB9
+ 2417 0005 00          		.4byte	.LFE9-.LFB9
+ 2418 0006 00 00       		.4byte	.LFB3
+ 2419 0007 00 00       		.4byte	.LFE3-.LFB3
+ 2420 0008 00 00 00 00 		.4byte	.LFB10
+ 2421 000a 00 00 00 00 		.4byte	.LFE10-.LFB10
+ 2422 000c 00 00 00 00 		.4byte	.LFB8
+ 2423 000e 00 00 00 00 		.4byte	.LFE8-.LFB8
+ 2424 0010 00 00 00 00 		.4byte	.LFB2
+ 2425 0012 00 00 00 00 		.4byte	.LFE2-.LFB2
+ 2426 0014 00 00 00 00 		.4byte	.LFB7
+ 2427 0016 00 00 00 00 		.4byte	.LFE7-.LFB7
+ 2428 0018 00 00 00 00 		.4byte	.LFB6
+ 2429 001a 00 00 00 00 		.4byte	.LFE6-.LFB6
+ 2430 001c 00 00 00 00 		.4byte	.LFB5
+ 2431 001e 00 00 00 00 		.4byte	.LFE5-.LFB5
+ 2432 0020 00 00 00 00 		.4byte	0x0
+ 2433 0022 00 00 00 00 		.4byte	0x0
+ 2434 0024 00 00 00 00 		.section	.debug_ranges,"",@progbits
+ 2435 0026 00 00 00 00 	.Ldebug_ranges0:
+ 2436 0028 00 00 00 00 		.4byte	.Ltext0
+ 2437 002a 00 00 00 00 		.4byte	.Letext0
+ 2438 002c 00 00 00 00 		.4byte	.LFB4
+ 2439 002e 00 00 00 00 		.4byte	.LFE4
+ 2440                 		.4byte	.LFB9
+ 2441                 		.4byte	.LFE9
+ 2442 0000 00 00 00 00 		.4byte	.LFB3
+ 2443 0002 00 00 00 00 		.4byte	.LFE3
+ 2444 0004 00 00 00 00 		.4byte	.LFB10
+ 2445 0006 00 00 00 00 		.4byte	.LFE10
+ 2446 0008 00 00 00 00 		.4byte	.LFB8
+ 2447 000a 00 00 00 00 		.4byte	.LFE8
+ 2448 000c 00 00 00 00 		.4byte	.LFB2
+ 2449 000e 00 00 00 00 		.4byte	.LFE2
+ 2450 0010 00 00 00 00 		.4byte	.LFB7
+ 2451 0012 00 00 00 00 		.4byte	.LFE7
+ 2452 0014 00 00 00 00 		.4byte	.LFB6
+ 2453 0016 00 00 00 00 		.4byte	.LFE6
+ 2454 0018 00 00 00 00 		.4byte	.LFB5
+ 2455 001a 00 00 00 00 		.4byte	.LFE5
+ 2456 001c 00 00 00 00 		.4byte	0x0
+ 2457 001e 00 00 00 00 		.4byte	0x0
+ 2458 0020 00 00 00 00 		.section	.debug_str,"MS",@progbits,1
+ 2459 0022 00 00 00 00 	.LASF115:
+ 2460 0024 00 00 00 00 		.ascii "GATT_CANCEL_CONNECT_REQ\000"
+ 2461 0026 00 00 00 00 	.LASF56:
+ 2462 0028 00 00 00 00 		.ascii "gatt_status_invalid_length\000"
+ 2463 002a 00 00 00 00 	.LASF142:
+ 2464                 		.ascii "GATT_EXCHANGE_MTU_CFM\000"
+ 2465                 	.LASF26:
+ 2466 0000 47 41 54 54 		.ascii "i2c_status_fail_timeout\000"
+ 2466      5F 43 41 4E 
+ 2466      43 45 4C 5F 
+ 2466      43 4F 4E 4E 
+ 2466      45 43 54 5F 
+ 2467                 	.LASF90:
+ 2468 000c 67 61 74 74 		.ascii "sm_status_invalid_parameters\000"
+ 2468      5F 73 74 61 
+ 2468      74 75 73 5F 
+ 2468      69 6E 76 61 
+ 2468      6C 69 64 5F 
+ 2469                 	.LASF170:
+ 2470 0019 47 41 54 54 		.ascii "SM_CONFIGURATION_REQ\000"
+ 2470      5F 45 58 43 
+ 2470      48 41 4E 47 
+ 2470      45 5F 4D 54 
+ 2470      55 5F 43 46 
+ 2471                 	.LASF54:
+ 2472 0024 69 32 63 5F 		.ascii "gatt_status_not_long\000"
+ 2472      73 74 61 74 
+ 2472      75 73 5F 66 
+ 2472      61 69 6C 5F 
+ 2472      74 69 6D 65 
+ 2473                 	.LASF275:
+ 2474 0030 73 6D 5F 73 		.ascii "p_ind\000"
+ 2474      74 61 74 75 
+ 2474      73 5F 69 6E 
+ 2474      76 61 6C 69 
+ 2474      64 5F 70 61 
+ 2475                 	.LASF103:
+ 2476 003f 53 4D 5F 43 		.ascii "LM_EV_ENCRYPTION_KEY_REFRESH\000"
+ 2476      4F 4E 46 49 
+ 2476      47 55 52 41 
+ 2476      54 49 4F 4E 
+ 2476      5F 52 45 51 
+ 2477                 	.LASF97:
+ 2478 0049 67 61 74 74 		.ascii "LM_EV_REMOTE_VERSION_INFO\000"
+ 2478      5F 73 74 61 
+ 2478      74 75 73 5F 
+ 2478      6E 6F 74 5F 
+ 2478      6C 6F 6E 67 
+ 2479                 	.LASF42:
+ 2480 0054 70 5F 69 6E 		.ascii "l2cap_status_buffer_full\000"
+ 2480      64 00 
+ 2481                 	.LASF85:
+ 2482 0057 4C 4D 5F 45 		.ascii "sm_status_pairing_not_supported\000"
+ 2482      56 5F 45 4E 
+ 2482      43 52 59 50 
+ 2482      54 49 4F 4E 
+ 2482      5F 4B 45 59 
+ 2483                 	.LASF86:
+ 2484 0065 4C 4D 5F 45 		.ascii "sm_status_encryption_key_size\000"
+ 2484      56 5F 52 45 
+ 2484      4D 4F 54 45 
+ 2484      5F 56 45 52 
+ 2484      53 49 4F 4E 
+ 2485                 	.LASF235:
+ 2486 0072 6C 32 63 61 		.ascii "LS_GAP_SET_SCAN_TYPE_CFM\000"
+ 2486      70 5F 73 74 
+ 2486      61 74 75 73 
+ 2486      5F 62 75 66 
+ 2486      66 65 72 5F 
+ 2487                 	.LASF93:
+ 2488 007f 73 6D 5F 73 		.ascii "sys_status_invalid\000"
+ 2488      74 61 74 75 
+ 2488      73 5F 70 61 
+ 2488      69 72 69 6E 
+ 2488      67 5F 6E 6F 
+ 2489                 	.LASF4:
+ 2490 008f 73 6D 5F 73 		.ascii "uint32\000"
+ 2490      74 61 74 75 
+ 2490      73 5F 65 6E 
+ 2490      63 72 79 70 
+ 2490      74 69 6F 6E 
+ 2491                 	.LASF80:
+ 2492 009e 4C 53 5F 47 		.ascii "sm_status_reserved\000"
+ 2492      41 50 5F 53 
+ 2492      45 54 5F 53 
+ 2492      43 41 4E 5F 
+ 2492      54 59 50 45 
+ 2493                 	.LASF73:
+ 2494 00aa 73 79 73 5F 		.ascii "gatt_status_invalid_operation\000"
+ 2494      73 74 61 74 
+ 2494      75 73 5F 69 
+ 2494      6E 76 61 6C 
+ 2494      69 64 00 
+ 2495                 	.LASF25:
+ 2496 00b4 75 69 6E 74 		.ascii "i2c_status_fail_arb_lost\000"
+ 2496      33 32 00 
+ 2497                 	.LASF23:
+ 2498 00b7 73 6D 5F 73 		.ascii "i2c_status_fail_nacked\000"
+ 2498      74 61 74 75 
+ 2498      73 5F 72 65 
+ 2498      73 65 72 76 
+ 2498      65 64 00 
+ 2499                 	.LASF282:
+ 2500 00c1 67 61 74 74 		.ascii "g_batt_data\000"
+ 2500      5F 73 74 61 
+ 2500      74 75 73 5F 
+ 2500      69 6E 76 61 
+ 2500      6C 69 64 5F 
+ 2501                 	.LASF21:
+ 2502 00d0 69 32 63 5F 		.ascii "i2c_status_controller_disabled\000"
+ 2502      73 74 61 74 
+ 2502      75 73 5F 66 
+ 2502      61 69 6C 5F 
+ 2502      61 72 62 5F 
+ 2503                 	.LASF176:
+ 2504 00dc 69 32 63 5F 		.ascii "SM_PAIRING_AUTH_RSP\000"
+ 2504      73 74 61 74 
+ 2504      75 73 5F 66 
+ 2504      61 69 6C 5F 
+ 2504      6E 61 63 6B 
+ 2505                 	.LASF155:
+ 2506 00e8 67 5F 62 61 		.ascii "GATT_UUID_CHAR_VAL_IND\000"
+ 2506      74 74 5F 64 
+ 2506      61 74 61 00 
+ 2507                 	.LASF123:
+ 2508 00ee 69 32 63 5F 		.ascii "GATT_DISC_SERVICE_CHAR_REQ\000"
+ 2508      73 74 61 74 
+ 2508      75 73 5F 63 
+ 2508      6F 6E 74 72 
+ 2508      6F 6C 6C 65 
+ 2509                 	.LASF78:
+ 2510 00fd 53 4D 5F 50 		.ascii "gatt_status_app_first_code\000"
+ 2510      41 49 52 49 
+ 2510      4E 47 5F 41 
+ 2510      55 54 48 5F 
+ 2510      52 53 50 00 
+ 2511                 	.LASF113:
+ 2512 0107 47 41 54 54 		.ascii "GATT_ADD_DB_SEGMENT_REQ\000"
+ 2512      5F 55 55 49 
+ 2512      44 5F 43 48 
+ 2512      41 52 5F 56 
+ 2512      41 4C 5F 49 
+ 2513                 	.LASF149:
+ 2514 0113 47 41 54 54 		.ascii "GATT_DISC_SERVICE_CHAR_CFM\000"
+ 2514      5F 44 49 53 
+ 2514      43 5F 53 45 
+ 2514      52 56 49 43 
+ 2514      45 5F 43 48 
+ 2515                 	.LASF136:
+ 2516 0120 67 61 74 74 		.ascii "GATT_ADD_DB_SEGMENT_CFM\000"
+ 2516      5F 73 74 61 
+ 2516      74 75 73 5F 
+ 2516      61 70 70 5F 
+ 2516      66 69 72 73 
+ 2517                 	.LASF189:
+ 2518 012e 47 41 54 54 		.ascii "SM_PAIRING_AUTH_IND\000"
+ 2518      5F 41 44 44 
+ 2518      5F 44 42 5F 
+ 2518      53 45 47 4D 
+ 2518      45 4E 54 5F 
+ 2519                 	.LASF274:
+ 2520 013a 47 41 54 54 		.ascii "BatteryHandleAccessWrite\000"
+ 2520      5F 44 49 53 
+ 2520      43 5F 53 45 
+ 2520      52 56 49 43 
+ 2520      45 5F 43 48 
+ 2521                 	.LASF122:
+ 2522 0147 47 41 54 54 		.ascii "GATT_FIND_INCLUDED_SERV_REQ\000"
+ 2522      5F 41 44 44 
+ 2522      5F 44 42 5F 
+ 2522      53 45 47 4D 
+ 2522      45 4E 54 5F 
+ 2523                 	.LASF185:
+ 2524 0153 53 4D 5F 50 		.ascii "SM_PASSKEY_INPUT_IND\000"
+ 2524      41 49 52 49 
+ 2524      4E 47 5F 41 
+ 2524      55 54 48 5F 
+ 2524      49 4E 44 00 
+ 2525                 	.LASF20:
+ 2526 015d 42 61 74 74 		.ascii "i2c_status_hardware_busy\000"
+ 2526      65 72 79 48 
+ 2526      61 6E 64 6C 
+ 2526      65 41 63 63 
+ 2526      65 73 73 57 
+ 2527                 	.LASF148:
+ 2528 016a 47 41 54 54 		.ascii "GATT_FIND_INCLUDED_SERV_CFM\000"
+ 2528      5F 46 49 4E 
+ 2528      44 5F 49 4E 
+ 2528      43 4C 55 44 
+ 2528      45 44 5F 53 
+ 2529                 	.LASF22:
+ 2530 0178 53 4D 5F 50 		.ascii "i2c_status_fail\000"
+ 2530      41 53 53 4B 
+ 2530      45 59 5F 49 
+ 2530      4E 50 55 54 
+ 2530      5F 49 4E 44 
+ 2531                 	.LASF173:
+ 2532 0182 69 32 63 5F 		.ascii "SM_PASSKEY_INPUT_NEG_RSP\000"
+ 2532      73 74 61 74 
+ 2532      75 73 5F 68 
+ 2532      61 72 64 77 
+ 2532      61 72 65 5F 
+ 2533                 	.LASF109:
+ 2534 018f 47 41 54 54 		.ascii "LM_EV_ACL_DATA_START\000"
+ 2534      5F 46 49 4E 
+ 2534      44 5F 49 4E 
+ 2534      43 4C 55 44 
+ 2534      45 44 5F 53 
+ 2535                 	.LASF72:
+ 2536 019d 69 32 63 5F 		.ascii "gatt_status_invalid_permissions\000"
+ 2536      73 74 61 74 
+ 2536      75 73 5F 66 
+ 2536      61 69 6C 00 
+ 2537                 	.LASF19:
+ 2538 01a5 53 4D 5F 50 		.ascii "i2c_status_firmware_busy\000"
+ 2538      41 53 53 4B 
+ 2538      45 59 5F 49 
+ 2538      4E 50 55 54 
+ 2538      5F 4E 45 47 
+ 2539                 	.LASF243:
+ 2540 01b1 4C 4D 5F 45 		.ascii "SYS_TEST_CHANNEL_MAP_REQ\000"
+ 2540      56 5F 41 43 
+ 2540      4C 5F 44 41 
+ 2540      54 41 5F 53 
+ 2540      54 41 52 54 
+ 2541                 	.LASF34:
+ 2542 01bc 67 61 74 74 		.ascii "spi_status_fail_timeout\000"
+ 2542      5F 73 74 61 
+ 2542      74 75 73 5F 
+ 2542      69 6E 76 61 
+ 2542      6C 69 64 5F 
+ 2543                 	.LASF37:
+ 2544 01cc 69 32 63 5F 		.ascii "skm_status_storage_full\000"
+ 2544      73 74 61 74 
+ 2544      75 73 5F 66 
+ 2544      69 72 6D 77 
+ 2544      61 72 65 5F 
+ 2545                 	.LASF8:
+ 2546 01d8 53 59 53 5F 		.ascii "long int\000"
+ 2546      54 45 53 54 
+ 2546      5F 43 48 41 
+ 2546      4E 4E 45 4C 
+ 2546      5F 4D 41 50 
+ 2547                 	.LASF58:
+ 2548 01e5 73 70 69 5F 		.ascii "gatt_status_insufficient_encryption\000"
+ 2548      73 74 61 74 
+ 2548      75 73 5F 66 
+ 2548      61 69 6C 5F 
+ 2548      74 69 6D 65 
+ 2549                 	.LASF48:
+ 2550 01f1 73 6B 6D 5F 		.ascii "gatt_status_insufficient_authentication\000"
+ 2550      73 74 61 74 
+ 2550      75 73 5F 73 
+ 2550      74 6F 72 61 
+ 2550      67 65 5F 66 
+ 2551                 	.LASF178:
+ 2552 01fd 6C 6F 6E 67 		.ascii "SM_SIMPLE_PAIRING_COMPLETE_IND\000"
+ 2552      20 69 6E 74 
+ 2552      00 
+ 2553                 	.LASF194:
+ 2554 0201 67 61 74 74 		.ascii "LS_DELETE_WHITELIST_DEVICE_REQ\000"
+ 2554      5F 73 74 61 
+ 2554      74 75 73 5F 
+ 2554      69 6E 73 75 
+ 2554      66 66 69 63 
+ 2555                 	.LASF262:
+ 2556 0213 67 61 74 74 		.ascii "nvm_offset\000"
+ 2556      5F 73 74 61 
+ 2556      74 75 73 5F 
+ 2556      69 6E 73 75 
+ 2556      66 66 69 63 
+ 2557                 	.LASF218:
+ 2558 0227 53 4D 5F 53 		.ascii "LS_DELETE_WHITELIST_DEVICE_CFM\000"
+ 2558      49 4D 50 4C 
+ 2558      45 5F 50 41 
+ 2558      49 52 49 4E 
+ 2558      47 5F 43 4F 
+ 2559                 	.LASF181:
+ 2560 0237 4C 53 5F 44 		.ascii "SM_KEYS_IND\000"
+ 2560      45 4C 45 54 
+ 2560      45 5F 57 48 
+ 2560      49 54 45 4C 
+ 2560      49 53 54 5F 
+ 2561                 	.LASF277:
+ 2562 0246 6E 76 6D 5F 		.ascii "p_value\000"
+ 2562      6F 66 66 73 
+ 2562      65 74 00 
+ 2563                 	.LASF41:
+ 2564 024c 4C 53 5F 44 		.ascii "l2cap_status_conn_not_ongoing\000"
+ 2564      45 4C 45 54 
+ 2564      45 5F 57 48 
+ 2564      49 54 45 4C 
+ 2564      49 53 54 5F 
+ 2565                 	.LASF88:
+ 2566 025b 53 4D 5F 4B 		.ascii "sm_status_unspecified_reason\000"
+ 2566      45 59 53 5F 
+ 2566      49 4E 44 00 
+ 2567                 	.LASF196:
+ 2568 0261 70 5F 76 61 		.ascii "LS_READ_RSSI_REQ\000"
+ 2568      6C 75 65 00 
+ 2569                 	.LASF168:
+ 2570 0265 6C 32 63 61 		.ascii "SM_ADD_STORED_KEY_REQ\000"
+ 2570      70 5F 73 74 
+ 2570      61 74 75 73 
+ 2570      5F 63 6F 6E 
+ 2570      6E 5F 6E 6F 
+ 2571                 	.LASF64:
+ 2572 0274 73 6D 5F 73 		.ascii "gatt_status_timeout\000"
+ 2572      74 61 74 75 
+ 2572      73 5F 75 6E 
+ 2572      73 70 65 63 
+ 2572      69 66 69 65 
+ 2573                 	.LASF220:
+ 2574 0283 4C 53 5F 52 		.ascii "LS_READ_RSSI_CFM\000"
+ 2574      45 41 44 5F 
+ 2574      52 53 53 49 
+ 2574      5F 52 45 51 
+ 2574      00 
+ 2575                 	.LASF264:
+ 2576 028b 53 4D 5F 41 		.ascii "BatteryInitChipReset\000"
+ 2576      44 44 5F 53 
+ 2576      54 4F 52 45 
+ 2576      44 5F 4B 45 
+ 2576      59 5F 52 45 
+ 2577                 	.LASF6:
+ 2578 0296 67 61 74 74 		.ascii "signed char\000"
+ 2578      5F 73 74 61 
+ 2578      74 75 73 5F 
+ 2578      74 69 6D 65 
+ 2578      6F 75 74 00 
+ 2579                 	.LASF133:
+ 2580 02a0 4C 53 5F 52 		.ascii "GATT_ACCESS_RSP\000"
+ 2580      45 41 44 5F 
+ 2580      52 53 53 49 
+ 2580      5F 43 46 4D 
+ 2580      00 
+ 2581                 	.LASF66:
+ 2582 02a9 42 61 74 74 		.ascii "gatt_status_invalid_uuid\000"
+ 2582      65 72 79 49 
+ 2582      6E 69 74 43 
+ 2582      68 69 70 52 
+ 2582      65 73 65 74 
+ 2583                 	.LASF284:
+ 2584 02b3 73 69 67 6E 		.ascii "battery_service.c\000"
+ 2584      65 64 20 63 
+ 2584      68 61 72 00 
+ 2585                 	.LASF150:
+ 2586 02b9 47 41 54 54 		.ascii "GATT_CHAR_DECL_INFO_IND\000"
+ 2586      5F 41 43 43 
+ 2586      45 53 53 5F 
+ 2586      52 53 50 00 
+ 2587                 	.LASF247:
+ 2588 02c1 67 61 74 74 		.ascii "event_code\000"
+ 2588      5F 73 74 61 
+ 2588      74 75 73 5F 
+ 2588      69 6E 76 61 
+ 2588      6C 69 64 5F 
+ 2589                 	.LASF281:
+ 2590 02ce 62 61 74 74 		.ascii "p_val\000"
+ 2590      65 72 79 5F 
+ 2590      73 65 72 76 
+ 2590      69 63 65 2E 
+ 2590      63 00 
+ 2591                 	.LASF163:
+ 2592 02d7 47 41 54 54 		.ascii "GATT_ACCESS_IND\000"
+ 2592      5F 43 48 41 
+ 2592      52 5F 44 45 
+ 2592      43 4C 5F 49 
+ 2592      4E 46 4F 5F 
+ 2593                 	.LASF96:
+ 2594 02e3 65 76 65 6E 		.ascii "LM_EV_ENCRYPTION_CHANGE\000"
+ 2594      74 5F 63 6F 
+ 2594      64 65 00 
+ 2595                 	.LASF2:
+ 2596 02e8 70 5F 76 61 		.ascii "unsigned char\000"
+ 2596      6C 00 
+ 2597                 	.LASF252:
+ 2598 02eb 47 41 54 54 		.ascii "size_value\000"
+ 2598      5F 41 43 43 
+ 2598      45 53 53 5F 
+ 2598      49 4E 44 00 
+ 2599                 	.LASF191:
+ 2600 02f3 4C 4D 5F 45 		.ascii "LS_READ_WHITELIST_SIZE_REQ\000"
+ 2600      56 5F 45 4E 
+ 2600      43 52 59 50 
+ 2600      54 49 4F 4E 
+ 2600      5F 43 48 41 
+ 2601                 	.LASF279:
+ 2602 02ff 75 6E 73 69 		.ascii "BatteryHandleAccessRead\000"
+ 2602      67 6E 65 64 
+ 2602      20 63 68 61 
+ 2602      72 00 
+ 2603                 	.LASF125:
+ 2604 0306 73 69 7A 65 		.ascii "GATT_READ_CHAR_VAL_REQ\000"
+ 2604      5F 76 61 6C 
+ 2604      75 65 00 
+ 2605                 	.LASF32:
+ 2606 030c 4C 53 5F 52 		.ascii "spi_status_erase_pending\000"
+ 2606      45 41 44 5F 
+ 2606      57 48 49 54 
+ 2606      45 4C 49 53 
+ 2606      54 5F 53 49 
+ 2607                 	.LASF153:
+ 2608 0319 42 61 74 74 		.ascii "GATT_READ_CHAR_VAL_CFM\000"
+ 2608      65 72 79 48 
+ 2608      61 6E 64 6C 
+ 2608      65 41 63 63 
+ 2608      65 73 73 52 
+ 2609                 	.LASF253:
+ 2610 0325 47 41 54 54 		.ascii "value\000"
+ 2610      5F 52 45 41 
+ 2610      44 5F 43 48 
+ 2610      41 52 5F 56 
+ 2610      41 4C 5F 52 
+ 2611                 	.LASF250:
+ 2612 0331 73 70 69 5F 		.ascii "flags\000"
+ 2612      73 74 61 74 
+ 2612      75 73 5F 65 
+ 2612      72 61 73 65 
+ 2612      5F 70 65 6E 
+ 2613                 	.LASF61:
+ 2614 033d 47 41 54 54 		.ascii "gatt_status_device_not_found\000"
+ 2614      5F 52 45 41 
+ 2614      44 5F 43 48 
+ 2614      41 52 5F 56 
+ 2614      41 4C 5F 43 
+ 2615                 	.LASF211:
+ 2616 0349 76 61 6C 75 		.ascii "LS_GAP_SET_SCAN_TYPE_REQ\000"
+ 2616      65 00 
+ 2617                 	.LASF270:
+ 2618 034c 66 6C 61 67 		.ascii "BatteryReadDataFromNVM\000"
+ 2618      73 00 
+ 2619                 	.LASF38:
+ 2620 034f 67 61 74 74 		.ascii "skm_status_too_many_keys\000"
+ 2620      5F 73 74 61 
+ 2620      74 75 73 5F 
+ 2620      64 65 76 69 
+ 2620      63 65 5F 6E 
+ 2621                 	.LASF117:
+ 2622 035d 4C 53 5F 47 		.ascii "GATT_DISCONNECT_REASON_REQ\000"
+ 2622      41 50 5F 53 
+ 2622      45 54 5F 53 
+ 2622      43 41 4E 5F 
+ 2622      54 59 50 45 
+ 2623                 	.LASF17:
+ 2624 036a 42 61 74 74 		.ascii "nvm_status_invalid_buffer\000"
+ 2624      65 72 79 52 
+ 2624      65 61 64 44 
+ 2624      61 74 61 46 
+ 2624      72 6F 6D 4E 
+ 2625                 	.LASF124:
+ 2626 0375 73 6B 6D 5F 		.ascii "GATT_DISC_ALL_CHAR_DESC_REQ\000"
+ 2626      73 74 61 74 
+ 2626      75 73 5F 74 
+ 2626      6F 6F 5F 6D 
+ 2626      61 6E 79 5F 
+ 2627                 	.LASF108:
+ 2628 0382 47 41 54 54 		.ascii "LM_EV_LONG_TERM_KEY_REQUESTED\000"
+ 2628      5F 44 49 53 
+ 2628      43 4F 4E 4E 
+ 2628      45 43 54 5F 
+ 2628      52 45 41 53 
+ 2629                 	.LASF76:
+ 2630 038f 6E 76 6D 5F 		.ascii "gatt_status_irq_proceed\000"
+ 2630      73 74 61 74 
+ 2630      75 73 5F 69 
+ 2630      6E 76 61 6C 
+ 2630      69 64 5F 62 
+ 2631                 	.LASF151:
+ 2632 039c 47 41 54 54 		.ascii "GATT_DISC_ALL_CHAR_DESC_CFM\000"
+ 2632      5F 44 49 53 
+ 2632      43 5F 41 4C 
+ 2632      4C 5F 43 48 
+ 2632      41 52 5F 44 
+ 2633                 	.LASF219:
+ 2634 03aa 4C 4D 5F 45 		.ascii "LS_READ_REMOTE_VERSION_INFO_CFM\000"
+ 2634      56 5F 4C 4F 
+ 2634      4E 47 5F 54 
+ 2634      45 52 4D 5F 
+ 2634      4B 45 59 5F 
+ 2635                 	.LASF129:
+ 2636 03b9 67 61 74 74 		.ascii "GATT_WRITE_CHAR_VAL_REQ\000"
+ 2636      5F 73 74 61 
+ 2636      74 75 73 5F 
+ 2636      69 72 71 5F 
+ 2636      70 72 6F 63 
+ 2637                 	.LASF269:
+ 2638 03c5 47 41 54 54 		.ascii "bat_level\000"
+ 2638      5F 44 49 53 
+ 2638      43 5F 41 4C 
+ 2638      4C 5F 43 48 
+ 2638      41 52 5F 44 
+ 2639                 	.LASF110:
+ 2640 03d3 4C 53 5F 52 		.ascii "LM_EV_ACL_DATA_CONT\000"
+ 2640      45 41 44 5F 
+ 2640      52 45 4D 4F 
+ 2640      54 45 5F 56 
+ 2640      45 52 53 49 
+ 2641                 	.LASF259:
+ 2642 03e3 47 41 54 54 		.ascii "gatt_client_config\000"
+ 2642      5F 57 52 49 
+ 2642      54 45 5F 43 
+ 2642      48 41 52 5F 
+ 2642      56 41 4C 5F 
+ 2643                 	.LASF159:
+ 2644 03ef 62 61 74 5F 		.ascii "GATT_WRITE_CHAR_VAL_CFM\000"
+ 2644      6C 65 76 65 
+ 2644      6C 00 
+ 2645                 	.LASF174:
+ 2646 03f4 4C 4D 5F 45 		.ascii "SM_PRIVACY_REGENERATE_ADDRESS_REQ\000"
+ 2646      56 5F 41 43 
+ 2646      4C 5F 44 41 
+ 2646      54 41 5F 43 
+ 2646      4F 4E 54 00 
+ 2647                 	.LASF112:
+ 2648 03fe 67 61 74 74 		.ascii "GATT_ADD_DB_REQ\000"
+ 2648      5F 63 6C 69 
+ 2648      65 6E 74 5F 
+ 2648      63 6F 6E 66 
+ 2648      69 67 00 
+ 2649                 	.LASF169:
+ 2650 0408 47 41 54 54 		.ascii "SM_REMOVE_STORED_KEY_REQ\000"
+ 2650      5F 57 52 49 
+ 2650      54 45 5F 43 
+ 2650      48 41 52 5F 
+ 2650      56 41 4C 5F 
+ 2651                 	.LASF135:
+ 2652 0414 53 4D 5F 50 		.ascii "GATT_ADD_DB_CFM\000"
+ 2652      52 49 56 41 
+ 2652      43 59 5F 52 
+ 2652      45 47 45 4E 
+ 2652      45 52 41 54 
+ 2653                 	.LASF254:
+ 2654 0425 47 41 54 54 		.ascii "GATT_ACCESS_IND_T\000"
+ 2654      5F 41 44 44 
+ 2654      5F 44 42 5F 
+ 2654      52 45 51 00 
+ 2655                 	.LASF31:
+ 2656 042d 53 4D 5F 52 		.ascii "spi_status_hardware_busy\000"
+ 2656      45 4D 4F 56 
+ 2656      45 5F 53 54 
+ 2656      4F 52 45 44 
+ 2656      5F 4B 45 59 
+ 2657                 	.LASF161:
+ 2658 0439 47 41 54 54 		.ascii "GATT_CHAR_VAL_IND_CFM\000"
+ 2658      5F 41 44 44 
+ 2658      5F 44 42 5F 
+ 2658      43 46 4D 00 
+ 2659                 	.LASF107:
+ 2660 0441 47 41 54 54 		.ascii "LM_EV_REMOTE_USED_FEATURES\000"
+ 2660      5F 41 43 43 
+ 2660      45 53 53 5F 
+ 2660      49 4E 44 5F 
+ 2660      54 00 
+ 2661                 	.LASF120:
+ 2662 044a 73 70 69 5F 		.ascii "GATT_DISC_ALL_PRIM_SERV_REQ\000"
+ 2662      73 74 61 74 
+ 2662      75 73 5F 68 
+ 2662      61 72 64 77 
+ 2662      61 72 65 5F 
+ 2663                 	.LASF83:
+ 2664 0457 47 41 54 54 		.ascii "sm_status_authentication_requirements\000"
+ 2664      5F 43 48 41 
+ 2664      52 5F 56 41 
+ 2664      4C 5F 49 4E 
+ 2664      44 5F 43 46 
+ 2665                 	.LASF198:
+ 2666 0462 4C 4D 5F 45 		.ascii "LS_READ_REMOTE_USED_FEATURES_REQ\000"
+ 2666      56 5F 52 45 
+ 2666      4D 4F 54 45 
+ 2666      5F 55 53 45 
+ 2666      44 5F 46 45 
+ 2667                 	.LASF256:
+ 2668 046f 47 41 54 54 		.ascii "gatt_client_config_notification\000"
+ 2668      5F 44 49 53 
+ 2668      43 5F 41 4C 
+ 2668      4C 5F 50 52 
+ 2668      49 4D 5F 53 
+ 2669                 	.LASF144:
+ 2670 047d 73 6D 5F 73 		.ascii "GATT_DISC_ALL_PRIM_SERV_CFM\000"
+ 2670      74 61 74 75 
+ 2670      73 5F 61 75 
+ 2670      74 68 65 6E 
+ 2670      74 69 63 61 
+ 2671                 	.LASF99:
+ 2672 0490 4C 53 5F 52 		.ascii "LM_EV_COMMAND_STATUS\000"
+ 2672      45 41 44 5F 
+ 2672      52 45 4D 4F 
+ 2672      54 45 5F 55 
+ 2672      53 45 44 5F 
+ 2673                 	.LASF241:
+ 2674 04a1 67 61 74 74 		.ascii "SYS_BACKGROUND_TICK_REQ\000"
+ 2674      5F 63 6C 69 
+ 2674      65 6E 74 5F 
+ 2674      63 6F 6E 66 
+ 2674      69 67 5F 6E 
+ 2675                 	.LASF222:
+ 2676 04b1 47 41 54 54 		.ascii "LS_READ_REMOTE_USED_FEATURES_CFM\000"
+ 2676      5F 44 49 53 
+ 2676      43 5F 41 4C 
+ 2676      4C 5F 50 52 
+ 2676      49 4D 5F 53 
+ 2677                 	.LASF261:
+ 2678 04bf 4C 4D 5F 45 		.ascii "level_client_config\000"
+ 2678      56 5F 43 4F 
+ 2678      4D 4D 41 4E 
+ 2678      44 5F 53 54 
+ 2678      41 54 55 53 
+ 2679                 	.LASF242:
+ 2680 04c9 53 59 53 5F 		.ascii "SYS_BACKGROUND_TICK_CFM\000"
+ 2680      42 41 43 4B 
+ 2680      47 52 4F 55 
+ 2680      4E 44 5F 54 
+ 2680      49 43 4B 5F 
+ 2681                 	.LASF98:
+ 2682 04d5 4C 53 5F 52 		.ascii "LM_EV_COMMAND_COMPLETE\000"
+ 2682      45 41 44 5F 
+ 2682      52 45 4D 4F 
+ 2682      54 45 5F 55 
+ 2682      53 45 44 5F 
+ 2683                 	.LASF225:
+ 2684 04e6 6C 65 76 65 		.ascii "LS_CONNECTION_PARAM_UPDATE_IND\000"
+ 2684      6C 5F 63 6C 
+ 2684      69 65 6E 74 
+ 2684      5F 63 6F 6E 
+ 2684      66 69 67 00 
+ 2685                 	.LASF210:
+ 2686 04f0 53 59 53 5F 		.ascii "LS_GAP_SET_ADV_INTERVAL_REQ\000"
+ 2686      42 41 43 4B 
+ 2686      47 52 4F 55 
+ 2686      4E 44 5F 54 
+ 2686      49 43 4B 5F 
+ 2687                 	.LASF52:
+ 2688 04fc 4C 4D 5F 45 		.ascii "gatt_status_prepare_queue_full\000"
+ 2688      56 5F 43 4F 
+ 2688      4D 4D 41 4E 
+ 2688      44 5F 43 4F 
+ 2688      4D 50 4C 45 
+ 2689                 	.LASF68:
+ 2690 0507 4C 53 5F 43 		.ascii "gatt_status_success_sent\000"
+ 2690      4F 4E 4E 45 
+ 2690      43 54 49 4F 
+ 2690      4E 5F 50 41 
+ 2690      52 41 4D 5F 
+ 2691                 	.LASF234:
+ 2692 0517 4C 53 5F 47 		.ascii "LS_GAP_SET_ADV_INTERVAL_CFM\000"
+ 2692      41 50 5F 53 
+ 2692      45 54 5F 41 
+ 2692      44 56 5F 49 
+ 2692      4E 54 45 52 
+ 2693                 	.LASF5:
+ 2694 0525 67 61 74 74 		.ascii "long unsigned int\000"
+ 2694      5F 73 74 61 
+ 2694      74 75 73 5F 
+ 2694      70 72 65 70 
+ 2694      61 72 65 5F 
+ 2695                 	.LASF164:
+ 2696 0534 67 61 74 74 		.ascii "GATT_IND_CHAR_VAL_IND\000"
+ 2696      5F 73 74 61 
+ 2696      74 75 73 5F 
+ 2696      73 75 63 63 
+ 2696      65 73 73 5F 
+ 2697                 	.LASF276:
+ 2698 0541 4C 53 5F 47 		.ascii "cur_bat_level\000"
+ 2698      41 50 5F 53 
+ 2698      45 54 5F 41 
+ 2698      44 56 5F 49 
+ 2698      4E 54 45 52 
+ 2699                 	.LASF24:
+ 2700 054f 6C 6F 6E 67 		.ascii "i2c_status_fail_bus_busy\000"
+ 2700      20 75 6E 73 
+ 2700      69 67 6E 65 
+ 2700      64 20 69 6E 
+ 2700      74 00 
+ 2701                 	.LASF69:
+ 2702 0558 47 41 54 54 		.ascii "gatt_status_invalid_cid\000"
+ 2702      5F 49 4E 44 
+ 2702      5F 43 48 41 
+ 2702      52 5F 56 41 
+ 2702      4C 5F 49 4E 
+ 2703                 	.LASF33:
+ 2704 0563 63 75 72 5F 		.ascii "spi_status_fail\000"
+ 2704      62 61 74 5F 
+ 2704      6C 65 76 65 
+ 2704      6C 00 
+ 2705                 	.LASF195:
+ 2706 056a 69 32 63 5F 		.ascii "LS_READ_REMOTE_VERSION_INFO_REQ\000"
+ 2706      73 74 61 74 
+ 2706      75 73 5F 66 
+ 2706      61 69 6C 5F 
+ 2706      62 75 73 5F 
+ 2707                 	.LASF285:
+ 2708 0576 67 61 74 74 		.ascii "C:\\Bitbucket\\Cafeteira\\CSR1010\\hr_sensor\000"
+ 2708      5F 73 74 61 
+ 2708      74 75 73 5F 
+ 2708      69 6E 76 61 
+ 2708      6C 69 64 5F 
+ 2709                 	.LASF105:
+ 2710 0582 73 70 69 5F 		.ascii "LM_EV_ADVERTISING_REPORT\000"
+ 2710      73 74 61 74 
+ 2710      75 73 5F 66 
+ 2710      61 69 6C 00 
+ 2711                 	.LASF95:
+ 2712 058a 4C 53 5F 52 		.ascii "LM_EV_DISCONNECT_COMPLETE\000"
+ 2712      45 41 44 5F 
+ 2712      52 45 4D 4F 
+ 2712      54 45 5F 56 
+ 2712      45 52 53 49 
+ 2713                 	.LASF60:
+ 2714 059a 43 3A 5C 42 		.ascii "gatt_status_insufficient_resources\000"
+ 2714      69 74 62 75 
+ 2714      63 6B 65 74 
+ 2714      5C 43 61 66 
+ 2714      65 74 65 69 
+ 2715                 	.LASF206:
+ 2716 05af 4C 4D 5F 45 		.ascii "LS_GAP_SET_MODE_REQ\000"
+ 2716      56 5F 41 44 
+ 2716      56 45 52 54 
+ 2716      49 53 49 4E 
+ 2716      47 5F 52 45 
+ 2717                 	.LASF141:
+ 2718 05bb 4C 4D 5F 45 		.ascii "GATT_DISCONNECT_IND\000"
+ 2718      56 5F 44 49 
+ 2718      53 43 4F 4E 
+ 2718      4E 45 43 54 
+ 2718      5F 43 4F 4D 
+ 2719                 	.LASF183:
+ 2720 05c8 67 61 74 74 		.ascii "SM_UNSTORED_KEY_IND\000"
+ 2720      5F 73 74 61 
+ 2720      74 75 73 5F 
+ 2720      69 6E 73 75 
+ 2720      66 66 69 63 
+ 2721                 	.LASF152:
+ 2722 05da 4C 53 5F 47 		.ascii "GATT_CHAR_DESC_INFO_IND\000"
+ 2722      41 50 5F 53 
+ 2722      45 54 5F 4D 
+ 2722      4F 44 45 5F 
+ 2722      52 45 51 00 
+ 2723                 	.LASF14:
+ 2724 05e4 47 41 54 54 		.ascii "nvm_status_invalid_configuration\000"
+ 2724      5F 44 49 53 
+ 2724      43 4F 4E 4E 
+ 2724      45 43 54 5F 
+ 2724      49 4E 44 00 
+ 2725                 	.LASF286:
+ 2726 05ee 53 4D 5F 55 		.ascii "BatteryCheckHandleRange\000"
+ 2726      4E 53 54 4F 
+ 2726      52 45 44 5F 
+ 2726      4B 45 59 5F 
+ 2726      49 4E 44 00 
+ 2727                 	.LASF119:
+ 2728 05f8 47 41 54 54 		.ascii "GATT_EXCHANGE_MTU_RSP\000"
+ 2728      5F 43 48 41 
+ 2728      52 5F 44 45 
+ 2728      53 43 5F 49 
+ 2728      4E 46 4F 5F 
+ 2729                 	.LASF201:
+ 2730 0604 6E 76 6D 5F 		.ascii "LS_UNUSED_CONNECTION_PARAM_UPDATE_RSP\000"
+ 2730      73 74 61 74 
+ 2730      75 73 5F 69 
+ 2730      6E 76 61 6C 
+ 2730      69 64 5F 63 
+ 2731                 	.LASF188:
+ 2732 0614 42 61 74 74 		.ascii "SM_DIV_APPROVE_IND\000"
+ 2732      65 72 79 43 
+ 2732      68 65 63 6B 
+ 2732      48 61 6E 64 
+ 2732      6C 65 52 61 
+ 2733                 	.LASF111:
+ 2734 0620 47 41 54 54 		.ascii "LM_EV_MANUFACTURER_EXTENSION\000"
+ 2734      5F 45 58 43 
+ 2734      48 41 4E 47 
+ 2734      45 5F 4D 54 
+ 2734      55 5F 52 53 
+ 2735                 	.LASF139:
+ 2736 062b 4C 53 5F 55 		.ascii "GATT_CANCEL_CONNECT_CFM\000"
+ 2736      4E 55 53 45 
+ 2736      44 5F 43 4F 
+ 2736      4E 4E 45 43 
+ 2736      54 49 4F 4E 
+ 2737                 	.LASF39:
+ 2738 063e 53 4D 5F 44 		.ascii "l2cap_status_invalid_conn_state\000"
+ 2738      49 56 5F 41 
+ 2738      50 50 52 4F 
+ 2738      56 45 5F 49 
+ 2738      4E 44 00 
+ 2739                 	.LASF143:
+ 2740 0648 4C 4D 5F 45 		.ascii "GATT_EXCHANGE_MTU_IND\000"
+ 2740      56 5F 4D 41 
+ 2740      4E 55 46 41 
+ 2740      43 54 55 52 
+ 2740      45 52 5F 45 
+ 2741                 	.LASF121:
+ 2742 0656 47 41 54 54 		.ascii "GATT_DISC_PRIM_SERV_BY_UUID_REQ\000"
+ 2742      5F 43 41 4E 
+ 2742      43 45 4C 5F 
+ 2742      43 4F 4E 4E 
+ 2742      45 43 54 5F 
+ 2743                 	.LASF146:
+ 2744 0662 6C 32 63 61 		.ascii "GATT_DISC_PRIM_SERV_BY_UUID_CFM\000"
+ 2744      70 5F 73 74 
+ 2744      61 74 75 73 
+ 2744      5F 69 6E 76 
+ 2744      61 6C 69 64 
+ 2745                 	.LASF128:
+ 2746 0672 47 41 54 54 		.ascii "GATT_READ_MULTI_CHAR_VAL_REQ\000"
+ 2746      5F 45 58 43 
+ 2746      48 41 4E 47 
+ 2746      45 5F 4D 54 
+ 2746      55 5F 49 4E 
+ 2747                 	.LASF213:
+ 2748 067d 47 41 54 54 		.ascii "LS_GAP_GET_RANDOM_ADDR_REQ\000"
+ 2748      5F 44 49 53 
+ 2748      43 5F 50 52 
+ 2748      49 4D 5F 53 
+ 2748      45 52 56 5F 
+ 2749                 	.LASF158:
+ 2750 068d 47 41 54 54 		.ascii "GATT_READ_MULTI_CHAR_VAL_CFM\000"
+ 2750      5F 44 49 53 
+ 2750      43 5F 50 52 
+ 2750      49 4D 5F 53 
+ 2750      45 52 56 5F 
+ 2751                 	.LASF132:
+ 2752 069d 47 41 54 54 		.ascii "GATT_CHAR_VAL_INDICATION_REQ\000"
+ 2752      5F 52 45 41 
+ 2752      44 5F 4D 55 
+ 2752      4C 54 49 5F 
+ 2752      43 48 41 52 
+ 2753                 	.LASF237:
+ 2754 06ac 4C 53 5F 47 		.ascii "LS_GAP_GET_RANDOM_ADDR_CFM\000"
+ 2754      41 50 5F 47 
+ 2754      45 54 5F 52 
+ 2754      41 4E 44 4F 
+ 2754      4D 5F 41 44 
+ 2755                 	.LASF245:
+ 2756 06b9 47 41 54 54 		.ascii "lm_event_code\000"
+ 2756      5F 52 45 41 
+ 2756      44 5F 4D 55 
+ 2756      4C 54 49 5F 
+ 2756      43 48 41 52 
+ 2757                 	.LASF214:
+ 2758 06c8 47 41 54 54 		.ascii "LS_RADIO_EVENT_NOTIFICATION_REQ\000"
+ 2758      5F 43 48 41 
+ 2758      52 5F 56 41 
+ 2758      4C 5F 49 4E 
+ 2758      44 49 43 41 
+ 2759                 	.LASF130:
+ 2760 06d6 4C 53 5F 47 		.ascii "GATT_WRITE_LONG_CHAR_VAL_REQ\000"
+ 2760      41 50 5F 47 
+ 2760      45 54 5F 52 
+ 2760      41 4E 44 4F 
+ 2760      4D 5F 41 44 
+ 2761                 	.LASF13:
+ 2762 06e4 6C 6D 5F 65 		.ascii "nvm_status_needs_erase\000"
+ 2762      76 65 6E 74 
+ 2762      5F 63 6F 64 
+ 2762      65 00 
+ 2763                 	.LASF53:
+ 2764 06eb 4C 53 5F 52 		.ascii "gatt_status_attr_not_found\000"
+ 2764      41 44 49 4F 
+ 2764      5F 45 56 45 
+ 2764      4E 54 5F 4E 
+ 2764      4F 54 49 46 
+ 2765                 	.LASF18:
+ 2766 06fb 47 41 54 54 		.ascii "i2c_status_waiting\000"
+ 2766      5F 57 52 49 
+ 2766      54 45 5F 4C 
+ 2766      4F 4E 47 5F 
+ 2766      43 48 41 52 
+ 2767                 	.LASF238:
+ 2768 0709 6E 76 6D 5F 		.ascii "LS_RADIO_EVENT_NOTIFICATION_CFM\000"
+ 2768      73 74 61 74 
+ 2768      75 73 5F 6E 
+ 2768      65 65 64 73 
+ 2768      5F 65 72 61 
+ 2769                 	.LASF160:
+ 2770 0715 67 61 74 74 		.ascii "GATT_WRITE_LONG_CHAR_VAL_CFM\000"
+ 2770      5F 73 74 61 
+ 2770      74 75 73 5F 
+ 2770      61 74 74 72 
+ 2770      5F 6E 6F 74 
+ 2771                 	.LASF127:
+ 2772 0722 69 32 63 5F 		.ascii "GATT_READ_LONG_CHAR_VAL_REQ\000"
+ 2772      73 74 61 74 
+ 2772      75 73 5F 77 
+ 2772      61 69 74 69 
+ 2772      6E 67 00 
+ 2773                 	.LASF258:
+ 2774 072c 4C 53 5F 52 		.ascii "gatt_client_config_reserved\000"
+ 2774      41 44 49 4F 
+ 2774      5F 45 56 45 
+ 2774      4E 54 5F 4E 
+ 2774      4F 54 49 46 
+ 2775                 	.LASF217:
+ 2776 073c 47 41 54 54 		.ascii "LS_ADD_DEVICE_TO_WHITELIST_CFM\000"
+ 2776      5F 57 52 49 
+ 2776      54 45 5F 4C 
+ 2776      4F 4E 47 5F 
+ 2776      43 48 41 52 
+ 2777                 	.LASF156:
+ 2778 074a 47 41 54 54 		.ascii "GATT_READ_LONG_CHAR_VAL_CFM\000"
+ 2778      5F 52 45 41 
+ 2778      44 5F 4C 4F 
+ 2778      4E 47 5F 43 
+ 2778      48 41 52 5F 
+ 2779                 	.LASF268:
+ 2780 0758 67 61 74 74 		.ascii "bat_voltage\000"
+ 2780      5F 63 6C 69 
+ 2780      65 6E 74 5F 
+ 2780      63 6F 6E 66 
+ 2780      69 67 5F 72 
+ 2781                 	.LASF67:
+ 2782 0766 4C 53 5F 41 		.ascii "gatt_status_success_more\000"
+ 2782      44 44 5F 44 
+ 2782      45 56 49 43 
+ 2782      45 5F 54 4F 
+ 2782      5F 57 48 49 
+ 2783                 	.LASF114:
+ 2784 0776 47 41 54 54 		.ascii "GATT_CONNECT_REQ\000"
+ 2784      5F 52 45 41 
+ 2784      44 5F 4C 4F 
+ 2784      4E 47 5F 43 
+ 2784      48 41 52 5F 
+ 2785                 	.LASF16:
+ 2786 0784 62 61 74 5F 		.ascii "nvm_status_invalid_offset\000"
+ 2786      76 6F 6C 74 
+ 2786      61 67 65 00 
+ 2787                 	.LASF137:
+ 2788 078a 67 61 74 74 		.ascii "GATT_CONNECT_CFM\000"
+ 2788      5F 73 74 61 
+ 2788      74 75 73 5F 
+ 2788      73 75 63 63 
+ 2788      65 73 73 5F 
+ 2789                 	.LASF43:
+ 2790 0796 47 41 54 54 		.ascii "ls_status_limited_advertising_timeout\000"
+ 2790      5F 43 4F 4E 
+ 2790      4E 45 43 54 
+ 2790      5F 52 45 51 
+ 2790      00 
+ 2791                 	.LASF46:
+ 2792 079f 6E 76 6D 5F 		.ascii "gatt_status_write_not_permitted\000"
+ 2792      73 74 61 74 
+ 2792      75 73 5F 69 
+ 2792      6E 76 61 6C 
+ 2792      69 64 5F 6F 
+ 2793                 	.LASF57:
+ 2794 07ac 47 41 54 54 		.ascii "gatt_status_unlikely_error\000"
+ 2794      5F 43 4F 4E 
+ 2794      4E 45 43 54 
+ 2794      5F 43 46 4D 
+ 2794      00 
+ 2795                 	.LASF266:
+ 2796 07b4 6C 73 5F 73 		.ascii "BatteryBondingNotify\000"
+ 2796      74 61 74 75 
+ 2796      73 5F 6C 69 
+ 2796      6D 69 74 65 
+ 2796      64 5F 61 64 
+ 2797                 	.LASF77:
+ 2798 07c7 67 61 74 74 		.ascii "gatt_status_app_mask\000"
+ 2798      5F 73 74 61 
+ 2798      74 75 73 5F 
+ 2798      77 72 69 74 
+ 2798      65 5F 6E 6F 
+ 2799                 	.LASF248:
+ 2800 07d7 67 61 74 74 		.ascii "event\000"
+ 2800      5F 73 74 61 
+ 2800      74 75 73 5F 
+ 2800      75 6E 6C 69 
+ 2800      6B 65 6C 79 
+ 2801                 	.LASF55:
+ 2802 07e5 42 61 74 74 		.ascii "gatt_status_insufficient_encr_key_size\000"
+ 2802      65 72 79 42 
+ 2802      6F 6E 64 69 
+ 2802      6E 67 4E 6F 
+ 2802      74 69 66 79 
+ 2803                 	.LASF104:
+ 2804 07ef 67 61 74 74 		.ascii "LM_EV_CONNECTION_COMPLETE\000"
+ 2804      5F 73 74 61 
+ 2804      74 75 73 5F 
+ 2804      61 70 70 5F 
+ 2804      6D 61 73 6B 
+ 2805                 	.LASF10:
+ 2806 07fa 65 76 65 6E 		.ascii "unsigned int\000"
+ 2806      74 00 
+ 2807                 	.LASF51:
+ 2808 07fd 67 61 74 74 		.ascii "gatt_status_insufficient_authorization\000"
+ 2808      5F 73 74 61 
+ 2808      74 75 73 5F 
+ 2808      69 6E 73 75 
+ 2808      66 66 69 63 
+ 2809                 	.LASF204:
+ 2810 0810 4C 4D 5F 45 		.ascii "LS_ADVERTISE_REQ\000"
+ 2810      56 5F 43 4F 
+ 2810      4E 4E 45 43 
+ 2810      54 49 4F 4E 
+ 2810      5F 43 4F 4D 
+ 2811                 	.LASF228:
+ 2812 081d 75 6E 73 69 		.ascii "LS_ADVERTISE_CFM\000"
+ 2812      67 6E 65 64 
+ 2812      20 69 6E 74 
+ 2812      00 
+ 2813                 	.LASF100:
+ 2814 0824 67 61 74 74 		.ascii "LM_EV_HARDWARE_ERROR\000"
+ 2814      5F 73 74 61 
+ 2814      74 75 73 5F 
+ 2814      69 6E 73 75 
+ 2814      66 66 69 63 
+ 2815                 	.LASF186:
+ 2816 0837 4C 53 5F 41 		.ascii "SM_PASSKEY_COMPARE_IND\000"
+ 2816      44 56 45 52 
+ 2816      54 49 53 45 
+ 2816      5F 52 45 51 
+ 2816      00 
+ 2817                 	.LASF102:
+ 2818 0840 4C 53 5F 41 		.ascii "LM_EV_BUFFER_OVERFLOW\000"
+ 2818      44 56 45 52 
+ 2818      54 49 53 45 
+ 2818      5F 43 46 4D 
+ 2818      00 
+ 2819                 	.LASF177:
+ 2820 0848 4C 4D 5F 45 		.ascii "SM_FEATURES_REQ\000"
+ 2820      56 5F 48 41 
+ 2820      52 44 57 41 
+ 2820      52 45 5F 45 
+ 2820      52 52 4F 52 
+ 2821                 	.LASF251:
+ 2822 0853 53 4D 5F 50 		.ascii "offset\000"
+ 2822      41 53 53 4B 
+ 2822      45 59 5F 43 
+ 2822      4F 4D 50 41 
+ 2822      52 45 5F 49 
+ 2823                 	.LASF74:
+ 2824 085e 4C 4D 5F 45 		.ascii "gatt_status_invalid_param_value\000"
+ 2824      56 5F 42 55 
+ 2824      46 46 45 52 
+ 2824      5F 4F 56 45 
+ 2824      52 46 4C 4F 
+ 2825                 	.LASF190:
+ 2826 0869 53 4D 5F 46 		.ascii "SM_FEATURES_CFM\000"
+ 2826      45 41 54 55 
+ 2826      52 45 53 5F 
+ 2826      52 45 51 00 
+ 2827                 	.LASF91:
+ 2828 0871 6F 66 66 73 		.ascii "sm_status_last_standardised\000"
+ 2828      65 74 00 
+ 2829                 	.LASF126:
+ 2830 0875 67 61 74 74 		.ascii "GATT_READ_CHAR_USING_UUID_REQ\000"
+ 2830      5F 73 74 61 
+ 2830      74 75 73 5F 
+ 2830      69 6E 76 61 
+ 2830      6C 69 64 5F 
+ 2831                 	.LASF273:
+ 2832 0885 53 4D 5F 46 		.ascii "old_vbat\000"
+ 2832      45 41 54 55 
+ 2832      52 45 53 5F 
+ 2832      43 46 4D 00 
+ 2833                 	.LASF209:
+ 2834 088d 73 6D 5F 73 		.ascii "LS_GAP_SET_SCAN_INTERVAL_REQ\000"
+ 2834      74 61 74 75 
+ 2834      73 5F 6C 61 
+ 2834      73 74 5F 73 
+ 2834      74 61 6E 64 
+ 2835                 	.LASF154:
+ 2836 089b 47 41 54 54 		.ascii "GATT_READ_CHAR_USING_UUID_CFM\000"
+ 2836      5F 52 45 41 
+ 2836      44 5F 43 48 
+ 2836      41 52 5F 55 
+ 2836      53 49 4E 47 
+ 2837                 	.LASF9:
+ 2838 08aa 6F 6C 64 5F 		.ascii "bool\000"
+ 2838      76 62 61 74 
+ 2838      00 
+ 2839                 	.LASF233:
+ 2840 08ae 4C 53 5F 47 		.ascii "LS_GAP_SET_SCAN_INTERVAL_CFM\000"
+ 2840      41 50 5F 53 
+ 2840      45 54 5F 53 
+ 2840      43 41 4E 5F 
+ 2840      49 4E 54 45 
+ 2841                 	.LASF207:
+ 2842 08bd 47 41 54 54 		.ascii "LS_GAP_SET_RANDOM_ADDR_REQ\000"
+ 2842      5F 52 45 41 
+ 2842      44 5F 43 48 
+ 2842      41 52 5F 55 
+ 2842      53 49 4E 47 
+ 2843                 	.LASF27:
+ 2844 08cc 62 6F 6F 6C 		.ascii "i2c_status_fail_inactive\000"
+ 2844      00 
+ 2845                 	.LASF192:
+ 2846 08ce 4C 53 5F 47 		.ascii "LS_RESET_WHITELIST_REQ\000"
+ 2846      41 50 5F 53 
+ 2846      45 54 5F 53 
+ 2846      43 41 4E 5F 
+ 2846      49 4E 54 45 
+ 2847                 	.LASF231:
+ 2848 08dd 4C 53 5F 47 		.ascii "LS_GAP_SET_RANDOM_ADDR_CFM\000"
+ 2848      41 50 5F 53 
+ 2848      45 54 5F 52 
+ 2848      41 4E 44 4F 
+ 2848      4D 5F 41 44 
+ 2849                 	.LASF44:
+ 2850 08ea 69 32 63 5F 		.ascii "gatt_status_invalid_handle\000"
+ 2850      73 74 61 74 
+ 2850      75 73 5F 66 
+ 2850      61 69 6C 5F 
+ 2850      69 6E 61 63 
+ 2851                 	.LASF199:
+ 2852 08f7 4C 53 5F 52 		.ascii "LS_SET_NEW_CONNECTION_PARAM_REQ\000"
+ 2852      45 53 45 54 
+ 2852      5F 57 48 49 
+ 2852      54 45 4C 49 
+ 2852      53 54 5F 52 
+ 2853                 	.LASF216:
+ 2854 0902 4C 53 5F 47 		.ascii "LS_RESET_WHITELIST_CFM\000"
+ 2854      41 50 5F 53 
+ 2854      45 54 5F 52 
+ 2854      41 4E 44 4F 
+ 2854      4D 5F 41 44 
+ 2855                 	.LASF223:
+ 2856 0910 67 61 74 74 		.ascii "LS_SET_NEW_CONNECTION_PARAM_CFM\000"
+ 2856      5F 73 74 61 
+ 2856      74 75 73 5F 
+ 2856      69 6E 76 61 
+ 2856      6C 69 64 5F 
+ 2857                 	.LASF171:
+ 2858 091d 4C 53 5F 53 		.ascii "SM_PASSKEY_DISPLAY_RSP\000"
+ 2858      45 54 5F 4E 
+ 2858      45 57 5F 43 
+ 2858      4F 4E 4E 45 
+ 2858      43 54 49 4F 
+ 2859                 	.LASF249:
+ 2860 092d 4C 53 5F 52 		.ascii "handle\000"
+ 2860      45 53 45 54 
+ 2860      5F 57 48 49 
+ 2860      54 45 4C 49 
+ 2860      53 54 5F 43 
+ 2861                 	.LASF175:
+ 2862 0939 4C 53 5F 53 		.ascii "SM_DIV_APPROVAL_RSP\000"
+ 2862      45 54 5F 4E 
+ 2862      45 57 5F 43 
+ 2862      4F 4E 4E 45 
+ 2862      43 54 49 4F 
+ 2863                 	.LASF184:
+ 2864 0949 53 4D 5F 50 		.ascii "SM_PASSKEY_DISPLAY_IND\000"
+ 2864      41 53 53 4B 
+ 2864      45 59 5F 44 
+ 2864      49 53 50 4C 
+ 2864      41 59 5F 52 
+ 2865                 	.LASF200:
+ 2866 0954 68 61 6E 64 		.ascii "LS_CONNECTION_PARAM_UPDATE_REQ\000"
+ 2866      6C 65 00 
+ 2867                 	.LASF59:
+ 2868 0958 53 4D 5F 44 		.ascii "gatt_status_unsupported_group_type\000"
+ 2868      49 56 5F 41 
+ 2868      50 50 52 4F 
+ 2868      56 41 4C 5F 
+ 2868      52 53 50 00 
+ 2869                 	.LASF280:
+ 2870 0962 53 4D 5F 50 		.ascii "length\000"
+ 2870      41 53 53 4B 
+ 2870      45 59 5F 44 
+ 2870      49 53 50 4C 
+ 2870      41 59 5F 49 
+ 2871                 	.LASF28:
+ 2872 096d 4C 53 5F 43 		.ascii "i2c_status_fail_unknown\000"
+ 2872      4F 4E 4E 45 
+ 2872      43 54 49 4F 
+ 2872      4E 5F 50 41 
+ 2872      52 41 4D 5F 
+ 2873                 	.LASF71:
+ 2874 097d 67 61 74 74 		.ascii "gatt_status_db_full\000"
+ 2874      5F 73 74 61 
+ 2874      74 75 73 5F 
+ 2874      75 6E 73 75 
+ 2874      70 70 6F 72 
+ 2875                 	.LASF11:
+ 2876 098e 6C 65 6E 67 		.ascii "sys_status_success\000"
+ 2876      74 68 00 
+ 2877                 	.LASF87:
+ 2878 0992 69 32 63 5F 		.ascii "sm_status_command_not_supported\000"
+ 2878      73 74 61 74 
+ 2878      75 73 5F 66 
+ 2878      61 69 6C 5F 
+ 2878      75 6E 6B 6E 
+ 2879                 	.LASF283:
+ 2880 099e 67 61 74 74 		.ascii "GNU C 4.3.4 CSR version 20 for xap [1388148]\000"
+ 2880      5F 73 74 61 
+ 2880      74 75 73 5F 
+ 2880      64 62 5F 66 
+ 2880      75 6C 6C 00 
+ 2881                 	.LASF145:
+ 2882 09a8 73 79 73 5F 		.ascii "GATT_SERV_INFO_IND\000"
+ 2882      73 74 61 74 
+ 2882      75 73 5F 73 
+ 2882      75 63 63 65 
+ 2882      73 73 00 
+ 2883                 	.LASF215:
+ 2884 09b1 73 6D 5F 73 		.ascii "LS_READ_WHITELIST_SIZE_CFM\000"
+ 2884      74 61 74 75 
+ 2884      73 5F 63 6F 
+ 2884      6D 6D 61 6E 
+ 2884      64 5F 6E 6F 
+ 2885                 	.LASF162:
+ 2886 09c1 47 4E 55 20 		.ascii "GATT_CHAR_VAL_NOT_CFM\000"
+ 2886      43 20 34 2E 
+ 2886      33 2E 34 20 
+ 2886      43 53 52 20 
+ 2886      76 65 72 73 
+ 2887                 	.LASF239:
+ 2888 09d8 47 41 54 54 		.ascii "LS_RADIO_EVENT_IND\000"
+ 2888      5F 53 45 52 
+ 2888      56 5F 49 4E 
+ 2888      46 4F 5F 49 
+ 2888      4E 44 00 
+ 2889                 	.LASF165:
+ 2890 09e1 4C 53 5F 52 		.ascii "GATT_NOT_CHAR_VAL_IND\000"
+ 2890      45 41 44 5F 
+ 2890      57 48 49 54 
+ 2890      45 4C 49 53 
+ 2890      54 5F 53 49 
+ 2891                 	.LASF62:
+ 2892 09ef 47 41 54 54 		.ascii "gatt_status_sign_failed\000"
+ 2892      5F 43 48 41 
+ 2892      52 5F 56 41 
+ 2892      4C 5F 4E 4F 
+ 2892      54 5F 43 46 
+ 2893                 	.LASF202:
+ 2894 09fa 4C 53 5F 52 		.ascii "LS_CONNECTION_UPDATE_SIGNALLING_RSP\000"
+ 2894      41 44 49 4F 
+ 2894      5F 45 56 45 
+ 2894      4E 54 5F 49 
+ 2894      4E 44 00 
+ 2895                 	.LASF267:
+ 2896 0a03 47 41 54 54 		.ascii "p_offset\000"
+ 2896      5F 4E 4F 54 
+ 2896      5F 43 48 41 
+ 2896      52 5F 56 41 
+ 2896      4C 5F 49 4E 
+ 2897                 	.LASF70:
+ 2898 0a0e 67 61 74 74 		.ascii "gatt_status_invalid_db\000"
+ 2898      5F 73 74 61 
+ 2898      74 75 73 5F 
+ 2898      73 69 67 6E 
+ 2898      5F 66 61 69 
+ 2899                 	.LASF75:
+ 2900 0a1a 4C 53 5F 43 		.ascii "gatt_status_data_validation_failed\000"
+ 2900      4F 4E 4E 45 
+ 2900      43 54 49 4F 
+ 2900      4E 5F 55 50 
+ 2900      44 41 54 45 
+ 2901                 	.LASF271:
+ 2902 0a2c 70 5F 6F 66 		.ascii "BatteryUpdateLevel\000"
+ 2902      66 73 65 74 
+ 2902      00 
+ 2903                 	.LASF226:
+ 2904 0a31 67 61 74 74 		.ascii "LS_CONNECTION_UPDATE_SIGNALLING_IND\000"
+ 2904      5F 73 74 61 
+ 2904      74 75 73 5F 
+ 2904      69 6E 76 61 
+ 2904      6C 69 64 5F 
+ 2905                 	.LASF15:
+ 2906 0a3c 67 61 74 74 		.ascii "nvm_status_not_initialised\000"
+ 2906      5F 73 74 61 
+ 2906      74 75 73 5F 
+ 2906      64 61 74 61 
+ 2906      5F 76 61 6C 
+ 2907                 	.LASF193:
+ 2908 0a4e 42 61 74 74 		.ascii "LS_ADD_DEVICE_TO_WHITELIST_REQ\000"
+ 2908      65 72 79 55 
+ 2908      70 64 61 74 
+ 2908      65 4C 65 76 
+ 2908      65 6C 00 
+ 2909                 	.LASF101:
+ 2910 0a57 4C 53 5F 43 		.ascii "LM_EV_NUMBER_COMPLETED_PACKETS\000"
+ 2910      4F 4E 4E 45 
+ 2910      43 54 49 4F 
+ 2910      4E 5F 55 50 
+ 2910      44 41 54 45 
+ 2911                 	.LASF49:
+ 2912 0a69 6E 76 6D 5F 		.ascii "gatt_status_request_not_supported\000"
+ 2912      73 74 61 74 
+ 2912      75 73 5F 6E 
+ 2912      6F 74 5F 69 
+ 2912      6E 69 74 69 
+ 2913                 	.LASF278:
+ 2914 0a77 4C 53 5F 41 		.ascii "client_config\000"
+ 2914      44 44 5F 44 
+ 2914      45 56 49 43 
+ 2914      45 5F 54 4F 
+ 2914      5F 57 48 49 
+ 2915                 	.LASF65:
+ 2916 0a86 4C 4D 5F 45 		.ascii "gatt_status_invalid_mtu\000"
+ 2916      56 5F 4E 55 
+ 2916      4D 42 45 52 
+ 2916      5F 43 4F 4D 
+ 2916      50 4C 45 54 
+ 2917                 	.LASF0:
+ 2918 0a96 67 61 74 74 		.ascii "uint8\000"
+ 2918      5F 73 74 61 
+ 2918      74 75 73 5F 
+ 2918      72 65 71 75 
+ 2918      65 73 74 5F 
+ 2919                 	.LASF79:
+ 2920 0aa7 63 6C 69 65 		.ascii "gatt_status_app_last_code\000"
+ 2920      6E 74 5F 63 
+ 2920      6F 6E 66 69 
+ 2920      67 00 
+ 2921                 	.LASF287:
+ 2922 0aae 67 61 74 74 		.ascii "readBatteryLevel\000"
+ 2922      5F 73 74 61 
+ 2922      74 75 73 5F 
+ 2922      69 6E 76 61 
+ 2922      6C 69 64 5F 
+ 2923                 	.LASF12:
+ 2924 0aba 75 69 6E 74 		.ascii "nvm_status_empty\000"
+ 2924      38 00 
+ 2925                 	.LASF260:
+ 2926 0abd 67 61 74 74 		.ascii "level\000"
+ 2926      5F 73 74 61 
+ 2926      74 75 73 5F 
+ 2926      61 70 70 5F 
+ 2926      6C 61 73 74 
+ 2927                 	.LASF7:
+ 2928 0aca 72 65 61 64 		.ascii "short int\000"
+ 2928      42 61 74 74 
+ 2928      65 72 79 4C 
+ 2928      65 76 65 6C 
+ 2928      00 
+ 2929                 	.LASF187:
+ 2930 0ad2 6E 76 6D 5F 		.ascii "SMx_DEBUG\000"
+ 2930      73 74 61 74 
+ 2930      75 73 5F 65 
+ 2930      6D 70 74 79 
+ 2930      00 
+ 2931                 	.LASF180:
+ 2932 0adb 6C 65 76 65 		.ascii "SM_CSRK_COUNTER_CHANGE_IND\000"
+ 2932      6C 00 
+ 2933                 	.LASF257:
+ 2934 0ade 73 68 6F 72 		.ascii "gatt_client_config_indication\000"
+ 2934      74 20 69 6E 
+ 2934      74 00 
+ 2935                 	.LASF205:
+ 2936 0ae3 53 4D 78 5F 		.ascii "LS_SCAN_REQ\000"
+ 2936      44 45 42 55 
+ 2936      47 00 
+ 2937                 	.LASF246:
+ 2938 0ae8 53 4D 5F 43 		.ascii "LM_EVENT_COMMON_T\000"
+ 2938      53 52 4B 5F 
+ 2938      43 4F 55 4E 
+ 2938      54 45 52 5F 
+ 2938      43 48 41 4E 
+ 2939                 	.LASF229:
+ 2940 0af5 67 61 74 74 		.ascii "LS_SCAN_CFM\000"
+ 2940      5F 63 6C 69 
+ 2940      65 6E 74 5F 
+ 2940      63 6F 6E 66 
+ 2940      69 67 5F 69 
+ 2941                 	.LASF240:
+ 2942 0b04 4C 53 5F 53 		.ascii "SYS_BACKGROUND_TICK_IND\000"
+ 2942      43 41 4E 5F 
+ 2942      52 45 51 00 
+ 2943                 	.LASF92:
+ 2944 0b0a 4C 4D 5F 45 		.ascii "sm_status_timeout\000"
+ 2944      56 45 4E 54 
+ 2944      5F 43 4F 4D 
+ 2944      4D 4F 4E 5F 
+ 2944      54 00 
+ 2945                 	.LASF30:
+ 2946 0b13 4C 53 5F 53 		.ascii "spi_status_waiting\000"
+ 2946      43 41 4E 5F 
+ 2946      43 46 4D 00 
+ 2947                 	.LASF106:
+ 2948 0b19 53 59 53 5F 		.ascii "LM_EV_CONNECTION_UPDATE\000"
+ 2948      42 41 43 4B 
+ 2948      47 52 4F 55 
+ 2948      4E 44 5F 54 
+ 2948      49 43 4B 5F 
+ 2949                 	.LASF208:
+ 2950 0b25 73 6D 5F 73 		.ascii "LS_GAP_SET_ADV_ADDR_REQ\000"
+ 2950      74 61 74 75 
+ 2950      73 5F 74 69 
+ 2950      6D 65 6F 75 
+ 2950      74 00 
+ 2951                 	.LASF166:
+ 2952 0b2e 73 70 69 5F 		.ascii "SM_SECURITY_LEVEL_REQ\000"
+ 2952      73 74 61 74 
+ 2952      75 73 5F 77 
+ 2952      61 69 74 69 
+ 2952      6E 67 00 
+ 2953                 	.LASF232:
+ 2954 0b38 4C 4D 5F 45 		.ascii "LS_GAP_SET_ADV_ADDR_CFM\000"
+ 2954      56 5F 43 4F 
+ 2954      4E 4E 45 43 
+ 2954      54 49 4F 4E 
+ 2954      5F 55 50 44 
+ 2955                 	.LASF179:
+ 2956 0b44 4C 53 5F 47 		.ascii "SM_SECURITY_LEVEL_CFM\000"
+ 2956      41 50 5F 53 
+ 2956      45 54 5F 41 
+ 2956      44 56 5F 41 
+ 2956      44 44 52 5F 
+ 2957                 	.LASF265:
+ 2958 0b50 53 4D 5F 53 		.ascii "BatteryDataInit\000"
+ 2958      45 43 55 52 
+ 2958      49 54 59 5F 
+ 2958      4C 45 56 45 
+ 2958      4C 5F 52 45 
+ 2959                 	.LASF47:
+ 2960 0b5b 4C 53 5F 47 		.ascii "gatt_status_invalid_pdu\000"
+ 2960      41 50 5F 53 
+ 2960      45 54 5F 41 
+ 2960      44 56 5F 41 
+ 2960      44 44 52 5F 
+ 2961                 	.LASF94:
+ 2962 0b67 53 4D 5F 53 		.ascii "sys_status\000"
+ 2962      45 43 55 52 
+ 2962      49 54 59 5F 
+ 2962      4C 45 56 45 
+ 2962      4C 5F 43 46 
+ 2963                 	.LASF230:
+ 2964 0b72 42 61 74 74 		.ascii "LS_GAP_SET_MODE_CFM\000"
+ 2964      65 72 79 44 
+ 2964      61 74 61 49 
+ 2964      6E 69 74 00 
+ 2965                 	.LASF157:
+ 2966 0b7a 67 61 74 74 		.ascii "GATT_LONG_CHAR_VAL_IND\000"
+ 2966      5F 73 74 61 
+ 2966      74 75 73 5F 
+ 2966      69 6E 76 61 
+ 2966      6C 69 64 5F 
+ 2967                 	.LASF197:
+ 2968 0b86 73 79 73 5F 		.ascii "LS_READ_TRANSMIT_POWER_LEVEL_REQ\000"
+ 2968      73 74 61 74 
+ 2968      75 73 00 
+ 2969                 	.LASF50:
+ 2970 0b8b 4C 53 5F 47 		.ascii "gatt_status_invalid_offset\000"
+ 2970      41 50 5F 53 
+ 2970      45 54 5F 4D 
+ 2970      4F 44 45 5F 
+ 2970      43 46 4D 00 
+ 2971                 	.LASF36:
+ 2972 0b95 47 41 54 54 		.ascii "skm_status_key_not_found\000"
+ 2972      5F 4C 4F 4E 
+ 2972      47 5F 43 48 
+ 2972      41 52 5F 56 
+ 2972      41 4C 5F 49 
+ 2973                 	.LASF63:
+ 2974 0ba1 4C 53 5F 52 		.ascii "gatt_status_busy\000"
+ 2974      45 41 44 5F 
+ 2974      54 52 41 4E 
+ 2974      53 4D 49 54 
+ 2974      5F 50 4F 57 
+ 2975                 	.LASF45:
+ 2976 0bb1 67 61 74 74 		.ascii "gatt_status_read_not_permitted\000"
+ 2976      5F 73 74 61 
+ 2976      74 75 73 5F 
+ 2976      69 6E 76 61 
+ 2976      6C 69 64 5F 
+ 2977                 	.LASF224:
+ 2978 0bbf 73 6B 6D 5F 		.ascii "LS_CONNECTION_PARAM_UPDATE_CFM\000"
+ 2978      73 74 61 74 
+ 2978      75 73 5F 6B 
+ 2978      65 79 5F 6E 
+ 2978      6F 74 5F 66 
+ 2979                 	.LASF81:
+ 2980 0bcb 67 61 74 74 		.ascii "sm_status_passkey_entry_failed\000"
+ 2980      5F 73 74 61 
+ 2980      74 75 73 5F 
+ 2980      62 75 73 79 
+ 2980      00 
+ 2981                 	.LASF131:
+ 2982 0bd4 67 61 74 74 		.ascii "GATT_CHAR_VAL_NOTIFICATION_REQ\000"
+ 2982      5F 73 74 61 
+ 2982      74 75 73 5F 
+ 2982      72 65 61 64 
+ 2982      5F 6E 6F 74 
+ 2983                 	.LASF272:
+ 2984 0be3 4C 53 5F 43 		.ascii "ucid\000"
+ 2984      4F 4E 4E 45 
+ 2984      43 54 49 4F 
+ 2984      4E 5F 50 41 
+ 2984      52 41 4D 5F 
+ 2985                 	.LASF3:
+ 2986 0bf3 73 6D 5F 73 		.ascii "short unsigned int\000"
+ 2986      74 61 74 75 
+ 2986      73 5F 70 61 
+ 2986      73 73 6B 65 
+ 2986      79 5F 65 6E 
+ 2987                 	.LASF84:
+ 2988 0c02 47 41 54 54 		.ascii "sm_status_confirm_value_failed\000"
+ 2988      5F 43 48 41 
+ 2988      52 5F 56 41 
+ 2988      4C 5F 4E 4F 
+ 2988      54 49 46 49 
+ 2989                 	.LASF172:
+ 2990 0c12 75 63 69 64 		.ascii "SM_PASSKEY_INPUT_RSP\000"
+ 2990      00 
+ 2991                 	.LASF134:
+ 2992 0c14 73 68 6F 72 		.ascii "GATT_STOP_CURRENT_PROC_REQ\000"
+ 2992      74 20 75 6E 
+ 2992      73 69 67 6E 
+ 2992      65 64 20 69 
+ 2992      6E 74 00 
+ 2993                 	.LASF244:
+ 2994 0c1e 73 6D 5F 73 		.ascii "SYS_TEST_CHANNEL_MAP_CFM\000"
+ 2994      74 61 74 75 
+ 2994      73 5F 63 6F 
+ 2994      6E 66 69 72 
+ 2994      6D 5F 76 61 
+ 2995                 	.LASF263:
+ 2996 0c2d 53 4D 5F 50 		.ascii "BATT_DATA_T\000"
+ 2996      41 53 53 4B 
+ 2996      45 59 5F 49 
+ 2996      4E 50 55 54 
+ 2996      5F 52 53 50 
+ 2997                 	.LASF29:
+ 2998 0c38 47 41 54 54 		.ascii "i2c_status_fail_write_poll_timeout\000"
+ 2998      5F 53 54 4F 
+ 2998      50 5F 43 55 
+ 2998      52 52 45 4E 
+ 2998      54 5F 50 52 
+ 2999                 	.LASF167:
+ 3000 0c45 53 59 53 5F 		.ascii "SM_KEY_REQUEST_RSP\000"
+ 3000      54 45 53 54 
+ 3000      5F 43 48 41 
+ 3000      4E 4E 45 4C 
+ 3000      5F 4D 41 50 
+ 3001                 	.LASF147:
+ 3002 0c52 42 41 54 54 		.ascii "GATT_DISC_PRIM_SERV_BY_UUID_IND\000"
+ 3002      5F 44 41 54 
+ 3002      41 5F 54 00 
+ 3003                 	.LASF221:
+ 3004 0c58 69 32 63 5F 		.ascii "LS_READ_TRANSMIT_POWER_LEVEL_CFM\000"
+ 3004      73 74 61 74 
+ 3004      75 73 5F 66 
+ 3004      61 69 6C 5F 
+ 3004      77 72 69 74 
+ 3005                 	.LASF40:
+ 3006 0c69 53 4D 5F 4B 		.ascii "l2cap_status_conn_disallowed\000"
+ 3006      45 59 5F 52 
+ 3006      45 51 55 45 
+ 3006      53 54 5F 52 
+ 3006      53 50 00 
+ 3007                 	.LASF89:
+ 3008 0c73 47 41 54 54 		.ascii "sm_status_repeated_attempts\000"
+ 3008      5F 44 49 53 
+ 3008      43 5F 50 52 
+ 3008      49 4D 5F 53 
+ 3008      45 52 56 5F 
+ 3009                 	.LASF182:
+ 3010 0c83 4C 53 5F 52 		.ascii "SM_KEY_REQUEST_IND\000"
+ 3010      45 41 44 5F 
+ 3010      54 52 41 4E 
+ 3010      53 4D 49 54 
+ 3010      5F 50 4F 57 
+ 3011                 	.LASF116:
+ 3012 0c93 6C 32 63 61 		.ascii "GATT_DISCONNECT_REQ\000"
+ 3012      70 5F 73 74 
+ 3012      61 74 75 73 
+ 3012      5F 63 6F 6E 
+ 3012      6E 5F 64 69 
+ 3013                 	.LASF140:
+ 3014 0ca2 73 6D 5F 73 		.ascii "GATT_DISCONNECT_CFM\000"
+ 3014      74 61 74 75 
+ 3014      73 5F 72 65 
+ 3014      70 65 61 74 
+ 3014      65 64 5F 61 
+ 3015                 	.LASF212:
+ 3016 0cb0 53 4D 5F 4B 		.ascii "LS_GAP_SET_ADV_CHAN_MASK_REQ\000"
+ 3016      45 59 5F 52 
+ 3016      45 51 55 45 
+ 3016      53 54 5F 49 
+ 3016      4E 44 00 
+ 3017                 	.LASF35:
+ 3018 0cb9 47 41 54 54 		.ascii "spi_status_page_overflow\000"
+ 3018      5F 44 49 53 
+ 3018      43 4F 4E 4E 
+ 3018      45 43 54 5F 
+ 3018      52 45 51 00 
+ 3019                 	.LASF203:
+ 3020 0cc3 47 41 54 54 		.ascii "LS_STORE_ADV_SCAN_DATA_REQ\000"
+ 3020      5F 44 49 53 
+ 3020      43 4F 4E 4E 
+ 3020      45 43 54 5F 
+ 3020      43 46 4D 00 
+ 3021                 	.LASF1:
+ 3022 0ccd 4C 53 5F 47 		.ascii "uint16\000"
+ 3022      41 50 5F 53 
+ 3022      45 54 5F 41 
+ 3022      44 56 5F 43 
+ 3022      48 41 4E 5F 
+ 3023                 	.LASF236:
+ 3024 0cdc 73 70 69 5F 		.ascii "LS_GAP_SET_ADV_CHAN_MASK_CFM\000"
+ 3024      73 74 61 74 
+ 3024      75 73 5F 70 
+ 3024      61 67 65 5F 
+ 3024      6F 76 65 72 
+ 3025                 	.LASF255:
+ 3026 0ce8 4C 53 5F 53 		.ascii "gatt_client_config_none\000"
+ 3026      54 4F 52 45 
+ 3026      5F 41 44 56 
+ 3026      5F 53 43 41 
+ 3026      4E 5F 44 41 
+ 3027                 	.LASF227:
+ 3028 0cf6 75 69 6E 74 		.ascii "LS_STORE_ADV_SCAN_DATA_CFM\000"
+ 3028      31 36 00 
+ 3029                 	.LASF82:
+ 3030 0cf9 4C 53 5F 47 		.ascii "sm_status_oob_not_available\000"
+ 3030      41 50 5F 53 
+ 3030      45 54 5F 41 
+ 3030      44 56 5F 43 
+ 3030      48 41 4E 5F 
+ 3031                 	.LASF118:
+ 3032 0d08 67 61 74 74 		.ascii "GATT_EXCHANGE_MTU_REQ\000"
+ 3032      5F 63 6C 69 
+ 3032      65 6E 74 5F 
+ 3032      63 6F 6E 66 
+ 3032      69 67 5F 6E 
+ 3033                 	.LASF138:
+ 3034 0d14 4C 53 5F 53 		.ascii "GATT_CONNECT_IND\000"
+ 3034      54 4F 52 45 
+ 3034      5F 41 44 56 
+ 3034      5F 53 43 41 
+ 3034      4E 5F 44 41 
+ 3035                 		.ident	"GCC: (GNU) 4.3.4 CSR version 20 for xap [1388148]"
+ 3036 0d21 73 6D 5F 73 	...
+ 3036      74 61 74 75 
+ 3036      73 5F 6F 6F 
+ 3036      62 5F 6E 6F 
+ 3036      74 5F 61 76 
