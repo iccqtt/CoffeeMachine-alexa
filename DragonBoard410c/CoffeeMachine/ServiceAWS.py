@@ -203,7 +203,7 @@ def sendCoffeelevel(level):
     print "Sending coffee level: " + str(level)
     Http.sendCoffeelevel(level)
     client.publish(TOPIC_LEVEL_COFFEE + IOT, level, 0)
-    Http.sendCoffeelevel(level)
+    #Http.sendCoffeelevel(level)
 
 
 def stopTimeoutLevelCoffee():

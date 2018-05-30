@@ -58,7 +58,7 @@ def sendCoffeelevel(level):
     }
 
     # sending post request and saving response as response object
-    #r = requests.post(API_ENDPOINT, json.dumps(payload))
+    r = requests.post(API_ENDPOINT, json.dumps(payload))
 
     #print r.text
 
