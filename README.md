@@ -9,7 +9,7 @@ The final application consists of a voice controlled, alexa powered coffee machi
 The code here is an expansion on the Coffee Machine project, which [you can find more detailed instructions here.](https://www.instructables.com/id/How-to-Connect-a-Coffee-Machine-With-an-Android-Ap/) There are also more links on this page regarding other project components, such as CSR and Android application info.
 # How to run this?
 ### Accounts
- * Create an [Amazon Developer](developer.amazon.com) account. (PS: you will also need an Amazon Web Services account later.)
+ * Create an [Amazon Developer](https://developer.amazon.com) account. (PS: you will also need an Amazon Web Services account later.)
  * Set up a [new Alexa device](https://developer.amazon.com/avs/home.html#/avs/home). Make sure to keep the product information readily available for future reference.
 
 ### Cognito
@@ -91,7 +91,7 @@ The code here is an expansion on the Coffee Machine project, which [you can find
 
 ### AWS Lambda
  * Create a new AWS Lambda function (make sure the region matches!) using the code provided in the ```AWS_Lambda``` folder.
- * You will need to create an API to control environment variables on Lambda. The URL for this API must be placed on ```lambda_function.py``` on *line 332*, otherwise it won't work. (More on this below)
+ * You will need to create an API to control environment variables on Lambda. (More on this below)
  * Environment variables used by Lambda (must be created):
  ```
  coffelevel         //Stores how much coffee is readily available in the machine
@@ -105,7 +105,7 @@ The code here is an expansion on the Coffee Machine project, which [you can find
  * Give it a name, a description, and leave ```Regional``` checked.
  * Select ```Actions``` and create a new resource named **status** with path ```/status```
  * Then, setup the *POST* and *GET* methods. Make sure you link them to your Lambda function!
-
+ * The API url **must** be set on ```lambda_function.py``` (line 332) and ```ServiceHTTP.py```(line 6)!
 
 ### CSR1010 code
 >This code runs on the embedded bluetooth module.

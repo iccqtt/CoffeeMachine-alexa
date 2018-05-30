@@ -3,7 +3,7 @@ import requests
 import json
 
 # defining the api-endpoint
-API_ENDPOINT = 'https://7r9s368i06.execute-api.us-west-2.amazonaws.com/prod/status'
+API_ENDPOINT = ''
 header = {'Content-Type': 'application/json'}
 
 def updateStatus(message):
