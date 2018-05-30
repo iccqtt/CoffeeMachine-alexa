@@ -143,4 +143,4 @@ The code here is an expansion on the Coffee Machine project, which [you can find
 
 -----
 ### Contact
-[Send us an e-mail here.](mailto:qtticcteste@gmail.br)
+[Send us an e-mail here.](mailto:qtticcteste@gmail.com)
