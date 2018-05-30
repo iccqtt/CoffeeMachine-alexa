@@ -13,7 +13,7 @@ The code here is an expansion on the Coffee Machine project, which [you can find
  * Set up a [new Alexa device](https://developer.amazon.com/avs/home.html#/avs/home). Make sure to keep the product information readily available for future reference.
 
 ### Cognito
- * On Amazon Web Services, access the Cognito service, go to ```Manage federated entities```, give a name and check ```Enable access to unauthenticated identities```.
+ * On Amazon Web Services, access the Cognito service, go to ```Manage federated entities```, then click on ```Create new identity pool```, give a name and check ```Enable access to unauthenticated identities```.
  * Get your cognito pool ID, clone this repository, and paste the ID code in ```AndroidApp/Cafeteira/app/src/main/java/cafeteira/com/cafeteira/controller/AWSConnection.java``` on constant ```COGNITO_POOL_ID```
  * Go to AWS IAM service, go to ```Policies``` and ```Create your own Policy```
  * Use the following policy JSON:
@@ -39,7 +39,7 @@ The code here is an expansion on the Coffee Machine project, which [you can find
 ### AWS IoT
 
  * Now go to AWS IoT core, click on ```Secure``` and then ```Policies```.
- * Input a name, then click ```Advanced mode``` and paste the following code:
+ * Click on the ```Create``` button. Input a name, then click ```Advanced mode``` and paste the following code:
  ```JSON
  {
   "Version": "2012-10-17",
