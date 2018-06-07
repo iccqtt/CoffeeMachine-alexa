@@ -55,7 +55,7 @@ The code here is an expansion on the Coffee Machine project, which [you can find
         "iot:Publish",
         "iot:Subscribe",
         "iot:Receive"
-      ],
+      ],    
       "Resource": "*"
     }
   ]
